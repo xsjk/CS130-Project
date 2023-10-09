@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "Make*": "makefile",
+        "backtrace": "perl",
+        "pintos": "perl",
+        "pintos-gdb": "perl",
+        "pintos-mkdisk": "perl",
+        "pintos-set-cmdline": "perl",
+        "*.ck": "perl"
+    },
+    "editor.formatOnSave": true
+}
