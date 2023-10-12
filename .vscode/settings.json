@@ -6,7 +6,14 @@
         "pintos-gdb": "perl",
         "pintos-mkdisk": "perl",
         "pintos-set-cmdline": "perl",
-        "*.ck": "perl"
+        "*.ck": "perl",
+        "*.h": "c",
     },
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "C_Cpp.default.systemIncludePath": [
+        "${workspaceFolder}/src/",
+        "${workspaceFolder}/src/lib/kernel",
+        "${workspaceFolder}/src/lib/user"
+    ],
+    "C_Cpp.clang_format_fallbackStyle": "GNU" 
 }
