@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
+#include <list.h>
 #include "devices/pit.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
@@ -24,6 +25,8 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+static struct list sleeping_list;
+
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -35,6 +38,8 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
+  list_init(&sleeping_list);
+
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -84,6 +89,11 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+
+static bool thread_time_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  return list_entry(a, struct thread, elem)->wakeup_time < list_entry(b, struct thread, elem)->wakeup_time;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
@@ -92,8 +102,14 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  thread_current ()->wakeup_time = start + ticks;
+  list_insert_ordered(&sleeping_list, &thread_current()->elem, thread_time_cmp, NULL);
+
+  intr_disable();
+  thread_block();
+  intr_enable();
+
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +188,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  // wake up sleeping threads
+  if (!list_empty(&sleeping_list)) {
+    struct list_elem *e = list_begin(&sleeping_list);
+    struct thread *t = list_entry(e, struct thread, elem);
+    if (t->wakeup_time <= ticks) {
+      list_remove(e);
+      thread_unblock(t);
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
