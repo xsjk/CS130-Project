@@ -90,8 +90,11 @@ timer_elapsed (int64_t then)
 }
 
 
-static bool thread_time_cmp(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-  return list_entry(a, struct thread, elem)->wakeup_time < list_entry(b, struct thread, elem)->wakeup_time;
+static bool 
+thread_priority_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  return list_entry(a, struct thread, elem)->wakeup_time < 
+         list_entry(b, struct thread, elem)->wakeup_time;
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
@@ -104,7 +107,7 @@ timer_sleep (int64_t ticks)
   ASSERT (intr_get_level () == INTR_ON);
 
   thread_current ()->wakeup_time = start + ticks;
-  list_insert_ordered(&sleeping_list, &thread_current()->elem, thread_time_cmp, NULL);
+  list_insert_ordered(&sleeping_list, &thread_current()->elem, thread_priority_less, NULL);
 
   intr_disable();
   thread_block();
@@ -190,12 +193,17 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
 
   // wake up sleeping threads
-  if (!list_empty(&sleeping_list)) {
-    struct list_elem *e = list_begin(&sleeping_list);
-    struct thread *t = list_entry(e, struct thread, elem);
+  struct list_elem *e;
+  struct thread *t;
+
+  e = list_begin(&sleeping_list);
+  while (!list_empty(&sleeping_list)) {
+    t = list_entry(e, struct thread, elem);
     if (t->wakeup_time <= ticks) {
-      list_remove(e);
+      e = list_remove(e);
       thread_unblock(t);
+    } else {
+      break;
     }
   }
 }
