@@ -71,6 +71,11 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool priority_cmp(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) {
+    /* lower numbers correspond to lower priority */
+    return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -91,7 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-  list_init (&all_list);
+  list_init(&all_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -232,14 +237,21 @@ void
 thread_unblock (struct thread *t) 
 {
   enum intr_level old_level;
+  struct thread* cur = thread_current();
 
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
-  ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  ASSERT(t->status == THREAD_BLOCKED);
+  // list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, priority_cmp, NULL);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
+
+  /* check if need yield*/
+  // if (t->priority > cur->priority) {
+  //   thread_yield();
+  // }
 }
 
 /* Returns the name of the running thread. */
@@ -307,9 +319,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
-  cur->status = THREAD_READY;
+  if (cur != idle_thread)
+    // list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, priority_cmp, NULL);
+    cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
 }
@@ -350,6 +363,9 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
+  struct thread* cur = thread_current();
+  cur->nice = nice;
+  cur->priority = PRI_MAX - (cur->recent_cpu / 4) - (nice * 2);
 }
 
 /* Returns the current thread's nice value. */
@@ -357,7 +373,8 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  struct thread* cur = thread_current();
+  return cur->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -365,7 +382,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return 100 * load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -373,9 +390,32 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  struct thread* cur = thread_current();
+  return 100 * cur->recent_cpu;
 }
-
+
+/*update*/
+void
+update_load_avg() {
+  load_avg = (59 / 60) * load_avg + (1 / 60) * list_size(&ready_list); 
+}
+
+void
+update_recent_cpu() {
+  for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
+    struct thread* t = list_entry(it, struct thread, allelem);
+    t->recent_cpu = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu + t->nice);  
+  }
+}
+
+void
+update_priority() {
+  for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
+    struct thread* t = list_entry(it, struct thread, allelem);
+    t->priority = PRI_MAX - (t->recent_cpu / 4) - (t->nice * 2);
+  }
+}
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -464,9 +504,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  t->nice = 0;
+  t->recent_cpu = 0;
+  load_avg = 0;
+
   old_level = intr_disable ();
-  list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
+  list_insert_ordered(&all_list, &t->allelem, priority_cmp, NULL);
+  // list_push_back (&all_list, &t->allelem);
+  intr_set_level(old_level);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -558,8 +603,8 @@ schedule (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (cur->status != THREAD_RUNNING);
-  ASSERT (is_thread (next));
-
+  ASSERT (is_thread(next));
+  
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
@@ -578,7 +623,11 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+bool is_idle_thread(struct thread* cur) {
+  return cur == idle_thread;
+}

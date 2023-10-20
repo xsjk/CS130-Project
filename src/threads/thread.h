@@ -93,6 +93,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    struct list_elem sleepelem;         /* List element for sleepinglist*/
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -102,7 +104,9 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     int64_t wakeup_time;                /* Time to wake up */
-  };
+    int nice;
+    int recent_cpu;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -138,6 +142,15 @@ void thread_set_priority (int);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
-int thread_get_load_avg (void);
+int thread_get_load_avg(void);
+
+int load_avg;
+
+void update_load_avg(); 
+void update_recent_cpu(); 
+void update_priority(); 
+
+bool is_idle_thread(struct thread *);
+
 
 #endif /* threads/thread.h */
