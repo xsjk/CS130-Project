@@ -184,13 +184,39 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  
+  struct thread* cur = thread_current();
+  // if (!is_idle_thread(cur)) {
+  //   cur->recent_cpu++;
+  // }
+
+  /*Each time a timer interrupt occurs*/
+  // update recent cpu, unless the idle thread is running
+
+  /* every fourth clock tick */
+  // update priority
+  if (ticks % 4 == 0) {
+    //   int priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice() * 2);
+    //   thread_set_priority(priority)
+      update_priority();
+  }
+
+  /* per second */
+  // update load_avg & recent_cpu
+  if (ticks % TIMER_FREQ == 0) {
+      update_load_avg();
+      update_recent_cpu();
+  }
+
+
 
   // wake up sleeping threads
   struct list_elem *e;
@@ -206,6 +232,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
     }
   }
+
+  
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

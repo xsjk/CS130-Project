@@ -88,6 +88,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int prev_priority;                  /* priority before borrow */
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem sleepelem;         /* List element for sleep threads list. */
 
@@ -103,7 +104,9 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     int64_t wakeup_time;                /* Time to wake up */
-  };
+    int nice;
+    int recent_cpu;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -139,6 +142,15 @@ void thread_set_priority (int);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
-int thread_get_load_avg (void);
+int thread_get_load_avg(void);
+
+int load_avg;
+
+void update_load_avg(); 
+void update_recent_cpu(); 
+void update_priority(); 
+
+bool is_idle_thread(struct thread *);
+
 
 #endif /* threads/thread.h */
