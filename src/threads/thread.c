@@ -226,7 +226,7 @@ thread_block (void)
 }
 
 
-static bool
+bool
 thread_priority_greater (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
 {
     return list_entry (a, struct thread, elem)->priority >
@@ -368,6 +368,31 @@ int
 thread_get_priority (void) 
 {
   return thread_current ()->priority;
+}
+
+/* Returns true if the current thread has donated priority. */
+bool
+thread_has_donated_priority(struct thread* t) 
+{
+  return t->prev_priority != 0;
+}
+
+/* Sets the donation priority of the current thread to NEW_PRIORITY. */
+void
+thread_set_donation_priority (struct thread* t, int new_priority) 
+{
+  t->prev_priority = t->priority;
+  t->priority = new_priority;
+  list_sort (&ready_list, thread_priority_greater, NULL);
+}
+
+/* Unsets the donation priority of the current thread. */
+void
+thread_unset_donation_priority (struct thread* t) 
+{
+  t->priority = t->prev_priority;
+  t->prev_priority = 0;
+  list_sort (&ready_list, thread_priority_greater, NULL);
 }
 
 /* Sets the current thread's nice value to NICE. */

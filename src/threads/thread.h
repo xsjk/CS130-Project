@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -124,6 +125,7 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+bool thread_priority_greater (const struct list_elem *, const struct list_elem *, void *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -138,6 +140,12 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+
+bool thread_has_donated_priority (struct thread *);
+void thread_set_donation_priority (struct thread *, int new_priority);
+void thread_unset_donation_priority (struct thread *); 
+
 
 int thread_get_nice (void);
 void thread_set_nice (int);

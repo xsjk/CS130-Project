@@ -206,7 +206,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   if (ticks % 4 == 0) {
     //   int priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice() * 2);
     //   thread_set_priority(priority)
-      update_priority();
+      // update_priority();
   }
 
   /* per second */
