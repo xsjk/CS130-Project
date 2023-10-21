@@ -389,13 +389,9 @@ thread_get_nice (void)
   return cur->nice;
 }
 
-int get_round(float num) {
-    if (num >= 0) {
-        return (int)(num + 0.5);
-    } else {
-        return (int)(num - 0.5);
-    }
-}
+
+#include <round.h>
+#define round(num) ROUND_UP(num, 1)
 
 
 /* Returns 100 times the system load average. */
@@ -403,7 +399,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return get_round(100 * load_avg);
+  return round(100 * load_avg);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -412,7 +408,7 @@ thread_get_recent_cpu (void)
 {
   /* Not yet implemented. */
   struct thread* cur = thread_current();
-  return get_round(100 * cur->recent_cpu);
+  return round(100 * cur->recent_cpu);
 }
 
 /*update*/

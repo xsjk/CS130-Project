@@ -228,27 +228,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
       update_load_avg();
       update_recent_cpu();
   }
-
-  /*Each time a timer interrupt occurs*/
-  // update recent cpu, unless the idle thread is running
-  struct thread* cur = thread_current();
-  if (!is_idle_thread(cur))
-    cur->recent_cpu++;
-
-  /* every fourth clock tick */
-  // update priority
-  if (ticks % 4 == 0) {
-    //   int priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice() * 2);
-    //   thread_set_priority(priority)
-      update_priority();
-  }
-
-  /* per second */
-  // update load_avg & recent_cpu
-  if (ticks % TIMER_FREQ == 0) {
-      update_load_avg();
-      update_recent_cpu();
-  }
+  
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
