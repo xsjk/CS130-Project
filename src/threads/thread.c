@@ -80,7 +80,7 @@ static tid_t allocate_tid (void);
 
    After calling this function, be sure to initialize the page
    allocator before trying to create any threads with
-   thread_create().
+().
 
    It is not safe to call thread_current() until this function
    finishes. */
@@ -248,6 +248,9 @@ thread_unblock (struct thread *t)
   list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+
+  if (thread_current () != idle_thread && thread_current ()->priority < t->priority)
+    thread_yield ();
 }
 
 /* Returns the name of the running thread. */
@@ -350,7 +353,7 @@ thread_set_priority (int new_priority)
     thread_yield ();
   } else
     cur->priority = new_priority;
-  // list_sort (&ready_list, thread_priority_greater, NULL);
+  list_sort (&ready_list, thread_priority_greater, NULL);
 
 }
 

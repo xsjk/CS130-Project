@@ -79,7 +79,10 @@ struct channel
 #define CHANNEL_CNT 2
 static struct channel channels[CHANNEL_CNT];
 
-static struct block_operations ide_operations;
+static void ide_read (void *d_, block_sector_t sec_no, void *buffer);
+static void ide_write (void *d_, block_sector_t sec_no, const void *buffer);
+
+static struct block_operations ide_operations = { ide_read, ide_write };
 
 static void reset_channel (struct channel *);
 static bool check_device_type (struct ata_disk *);
@@ -376,11 +379,6 @@ ide_write (void *d_, block_sector_t sec_no, const void *buffer)
   lock_release (&c->lock);
 }
 
-static struct block_operations ide_operations =
-  {
-    ide_read,
-    ide_write
-  };
 
 /* Selects device D, waiting for it to become ready, and then
    writes SEC_NO to the disk's sector selection registers.  (We

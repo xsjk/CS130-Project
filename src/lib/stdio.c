@@ -90,20 +90,33 @@ printf (const char *format, ...)
 
 /* printf() formatting internals. */
 
+enum parse_flags
+  {
+    MINUS = 1 << 0,         /* '-' */
+    PLUS = 1 << 1,          /* '+' */
+    SPACE = 1 << 2,         /* ' ' */
+    POUND = 1 << 3,         /* '#' */
+    ZERO = 1 << 4,          /* '0' */
+    GROUP = 1 << 5          /* '\'' */
+  };
+
+enum argument_format_type
+  {
+    CHAR = 1,               /* hh */
+    SHORT = 2,              /* h */
+    INT = 3,                /* (none) */
+    INTMAX = 4,             /* j */
+    LONG = 5,               /* l */
+    LONGLONG = 6,           /* ll */
+    PTRDIFFT = 7,           /* t */
+    SIZET = 8               /* z */
+  };
+  
 /* A printf() conversion. */
 struct printf_conversion 
   {
     /* Flags. */
-    enum 
-      {
-        MINUS = 1 << 0,         /* '-' */
-        PLUS = 1 << 1,          /* '+' */
-        SPACE = 1 << 2,         /* ' ' */
-        POUND = 1 << 3,         /* '#' */
-        ZERO = 1 << 4,          /* '0' */
-        GROUP = 1 << 5          /* '\'' */
-      }
-    flags;
+    enum parse_flags flags;
 
     /* Minimum field width. */
     int width;
@@ -113,19 +126,9 @@ struct printf_conversion
     int precision;
 
     /* Type of argument to format. */
-    enum 
-      {
-        CHAR = 1,               /* hh */
-        SHORT = 2,              /* h */
-        INT = 3,                /* (none) */
-        INTMAX = 4,             /* j */
-        LONG = 5,               /* l */
-        LONGLONG = 6,           /* ll */
-        PTRDIFFT = 7,           /* t */
-        SIZET = 8               /* z */
-      }
-    type;
+    enum argument_format_type type;
   };
+
 
 struct integer_base 
   {
