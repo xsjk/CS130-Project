@@ -356,11 +356,17 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current ();
-  if (new_priority <= cur->priority) {
-    thread_update_priority (cur, new_priority);
+  if (new_priority < cur->priority) {
+    if (!thread_is_donated(cur))
+      thread_update_priority (cur, new_priority);
+    cur->init_priority = new_priority;
     thread_yield ();
-  } else
-    thread_update_priority (cur, new_priority);
+  } else {
+    if (!thread_is_donated(cur))
+      thread_update_priority (cur, new_priority);
+    cur->init_priority = new_priority;
+    // thread_yield ();
+  }
 
 }
 
@@ -372,6 +378,11 @@ thread_update_priority (struct thread *t, int new_priority)
     list_remove (&t->elem);
     list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
   }
+  /// TODO: get list* from list_elem* in O(1)
+//   struct list_elem* it = list_remove (&t->elem);
+//   while(it->prev != NULL) it = it->prev;
+//   struct list* l = (struct list*) it;
+//   list_insert_ordered (l, &t->elem, thread_priority_greater, NULL);
 }
 
 
@@ -405,13 +416,6 @@ thread_set_donation_priority (struct thread* t, int new_priority)
   struct list* l = (struct list*) it;
   list_insert_ordered (l, &t->elem, thread_priority_greater, NULL);
   
-}
-
-/* Unsets the donation priority of the current thread. */
-void
-thread_unset_donation_priority (struct thread* t) 
-{
-  thread_update_priority(t, t->init_priority);
 }
 
 /* Sets the current thread's nice value to NICE. */

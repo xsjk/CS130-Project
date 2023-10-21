@@ -149,7 +149,6 @@ void thread_update_priority (struct thread *t, int);
 
 bool thread_is_donated (struct thread *);
 void thread_set_donation_priority (struct thread *, int new_priority);
-void thread_unset_donation_priority (struct thread *); 
 
 
 int thread_get_nice (void);
