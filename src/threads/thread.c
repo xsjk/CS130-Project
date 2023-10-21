@@ -502,6 +502,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->prev_priority = 0;
   t->magic = THREAD_MAGIC;
 
   t->nice = 0;
