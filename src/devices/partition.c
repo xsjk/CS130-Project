@@ -13,7 +13,11 @@ struct partition
     block_sector_t start;               /* First sector within device. */
   };
 
-static struct block_operations partition_operations;
+static void partition_read (void *p_, block_sector_t sector, void *buffer);
+static void partition_write (void *p_, block_sector_t sector, const void *buffer);
+
+static struct block_operations partition_operations = { partition_read, partition_write};
+
 
 static void read_partition_table (struct block *, block_sector_t sector,
                                   block_sector_t primary_extended_sector,
@@ -85,7 +89,7 @@ read_partition_table (struct block *block, block_sector_t sector,
 
   /* Read sector. */
   ASSERT (sizeof *pt == BLOCK_SECTOR_SIZE);
-  pt = malloc (sizeof *pt);
+  pt = (struct partition_table *) malloc (sizeof *pt);
   if (pt == NULL)
     PANIC ("Failed to allocate memory for partition table.");
   block_read (block, 0, pt);
@@ -172,7 +176,7 @@ found_partition (struct block *block, uint8_t part_type,
       char extra_info[128];
       char name[16];
 
-      p = malloc (sizeof *p);
+      p = (struct partition *) malloc (sizeof *p);
       if (p == NULL)
         PANIC ("Failed to allocate memory for partition descriptor");
       p->block = block;
@@ -193,109 +197,109 @@ partition_type_name (uint8_t type)
      From util-linux-2.12r/fdisk/i386_sys_types.c.
      This initializer makes use of a C99 feature that allows
      array elements to be initialized by index. */
-  static const char *type_names[256] =
-    {
-      [0x00] = "Empty",
-      [0x01] = "FAT12",
-      [0x02] = "XENIX root",
-      [0x03] = "XENIX usr",
-      [0x04] = "FAT16 <32M",
-      [0x05] = "Extended",
-      [0x06] = "FAT16",
-      [0x07] = "HPFS/NTFS",
-      [0x08] = "AIX",
-      [0x09] = "AIX bootable",
-      [0x0a] = "OS/2 Boot Manager",
-      [0x0b] = "W95 FAT32",
-      [0x0c] = "W95 FAT32 (LBA)",
-      [0x0e] = "W95 FAT16 (LBA)",
-      [0x0f] = "W95 Ext'd (LBA)",
-      [0x10] = "OPUS",
-      [0x11] = "Hidden FAT12",
-      [0x12] = "Compaq diagnostics",
-      [0x14] = "Hidden FAT16 <32M",
-      [0x16] = "Hidden FAT16",
-      [0x17] = "Hidden HPFS/NTFS",
-      [0x18] = "AST SmartSleep",
-      [0x1b] = "Hidden W95 FAT32",
-      [0x1c] = "Hidden W95 FAT32 (LBA)",
-      [0x1e] = "Hidden W95 FAT16 (LBA)",
-      [0x20] = "Pintos OS kernel",
-      [0x21] = "Pintos file system",
-      [0x22] = "Pintos scratch",
-      [0x23] = "Pintos swap",
-      [0x24] = "NEC DOS",
-      [0x39] = "Plan 9",
-      [0x3c] = "PartitionMagic recovery",
-      [0x40] = "Venix 80286",
-      [0x41] = "PPC PReP Boot",
-      [0x42] = "SFS",
-      [0x4d] = "QNX4.x",
-      [0x4e] = "QNX4.x 2nd part",
-      [0x4f] = "QNX4.x 3rd part",
-      [0x50] = "OnTrack DM",
-      [0x51] = "OnTrack DM6 Aux1",
-      [0x52] = "CP/M",
-      [0x53] = "OnTrack DM6 Aux3",
-      [0x54] = "OnTrackDM6",
-      [0x55] = "EZ-Drive",
-      [0x56] = "Golden Bow",
-      [0x5c] = "Priam Edisk",
-      [0x61] = "SpeedStor",
-      [0x63] = "GNU HURD or SysV",
-      [0x64] = "Novell Netware 286",
-      [0x65] = "Novell Netware 386",
-      [0x70] = "DiskSecure Multi-Boot",
-      [0x75] = "PC/IX",
-      [0x80] = "Old Minix",
-      [0x81] = "Minix / old Linux",
-      [0x82] = "Linux swap / Solaris",
-      [0x83] = "Linux",
-      [0x84] = "OS/2 hidden C: drive",
-      [0x85] = "Linux extended",
-      [0x86] = "NTFS volume set",
-      [0x87] = "NTFS volume set",
-      [0x88] = "Linux plaintext",
-      [0x8e] = "Linux LVM",
-      [0x93] = "Amoeba",
-      [0x94] = "Amoeba BBT",
-      [0x9f] = "BSD/OS",
-      [0xa0] = "IBM Thinkpad hibernation",
-      [0xa5] = "FreeBSD",
-      [0xa6] = "OpenBSD",
-      [0xa7] = "NeXTSTEP",
-      [0xa8] = "Darwin UFS",
-      [0xa9] = "NetBSD",
-      [0xab] = "Darwin boot",
-      [0xb7] = "BSDI fs",
-      [0xb8] = "BSDI swap",
-      [0xbb] = "Boot Wizard hidden",
-      [0xbe] = "Solaris boot",
-      [0xbf] = "Solaris",
-      [0xc1] = "DRDOS/sec (FAT-12)",
-      [0xc4] = "DRDOS/sec (FAT-16 < 32M)",
-      [0xc6] = "DRDOS/sec (FAT-16)",
-      [0xc7] = "Syrinx",
-      [0xda] = "Non-FS data",
-      [0xdb] = "CP/M / CTOS / ...",
-      [0xde] = "Dell Utility",
-      [0xdf] = "BootIt",
-      [0xe1] = "DOS access",
-      [0xe3] = "DOS R/O",
-      [0xe4] = "SpeedStor",
-      [0xeb] = "BeOS fs",
-      [0xee] = "EFI GPT",
-      [0xef] = "EFI (FAT-12/16/32)",
-      [0xf0] = "Linux/PA-RISC boot",
-      [0xf1] = "SpeedStor",
-      [0xf4] = "SpeedStor",
-      [0xf2] = "DOS secondary",
-      [0xfd] = "Linux raid autodetect",
-      [0xfe] = "LANstep",
-      [0xff] = "BBT",
-    };
+  static const char *type_names[256];
 
-  return type_names[type] != NULL ? type_names[type] : "Unknown";
+  switch (type) {
+    case 0x00:  return "Empty";
+    case 0x01:  return "FAT12";
+    case 0x02:  return "XENIX root";
+    case 0x03:  return "XENIX usr";
+    case 0x04:  return "FAT16 <32M";
+    case 0x05:  return "Extended";
+    case 0x06:  return "FAT16";
+    case 0x07:  return "HPFS/NTFS";
+    case 0x08:  return "AIX";
+    case 0x09:  return "AIX bootable";
+    case 0x0a:  return "OS/2 Boot Manager";
+    case 0x0b:  return "W95 FAT32";
+    case 0x0c:  return "W95 FAT32 (LBA)";
+    case 0x0e:  return "W95 FAT16 (LBA)";
+    case 0x0f:  return "W95 Ext'd (LBA)";
+    case 0x10:  return "OPUS";
+    case 0x11:  return "Hidden FAT12";
+    case 0x12:  return "Compaq diagnostics";
+    case 0x14:  return "Hidden FAT16 <32M";
+    case 0x16:  return "Hidden FAT16";
+    case 0x17:  return "Hidden HPFS/NTFS";
+    case 0x18:  return "AST SmartSleep";
+    case 0x1b:  return "Hidden W95 FAT32";
+    case 0x1c:  return "Hidden W95 FAT32 (LBA)";
+    case 0x1e:  return "Hidden W95 FAT16 (LBA)";
+    case 0x20:  return "Pintos OS kernel";
+    case 0x21:  return "Pintos file system";
+    case 0x22:  return "Pintos scratch";
+    case 0x23:  return "Pintos swap";
+    case 0x24:  return "NEC DOS";
+    case 0x39:  return "Plan 9";
+    case 0x3c:  return "PartitionMagic recovery";
+    case 0x40:  return "Venix 80286";
+    case 0x41:  return "PPC PReP Boot";
+    case 0x42:  return "SFS";
+    case 0x4d:  return "QNX4.x";
+    case 0x4e:  return "QNX4.x 2nd part";
+    case 0x4f:  return "QNX4.x 3rd part";
+    case 0x50:  return "OnTrack DM";
+    case 0x51:  return "OnTrack DM6 Aux1";
+    case 0x52:  return "CP/M";
+    case 0x53:  return "OnTrack DM6 Aux3";
+    case 0x54:  return "OnTrackDM6";
+    case 0x55:  return "EZ-Drive";
+    case 0x56:  return "Golden Bow";
+    case 0x5c:  return "Priam Edisk";
+    case 0x61:  return "SpeedStor";
+    case 0x63:  return "GNU HURD or SysV";
+    case 0x64:  return "Novell Netware 286";
+    case 0x65:  return "Novell Netware 386";
+    case 0x70:  return "DiskSecure Multi-Boot";
+    case 0x75:  return "PC/IX";
+    case 0x80:  return "Old Minix";
+    case 0x81:  return "Minix / old Linux";
+    case 0x82:  return "Linux swap / Solaris";
+    case 0x83:  return "Linux";
+    case 0x84:  return "OS/2 hidden C: drive";
+    case 0x85:  return "Linux extended";
+    case 0x86:  return "NTFS volume set";
+    case 0x87:  return "NTFS volume set";
+    case 0x88:  return "Linux plaintext";
+    case 0x8e:  return "Linux LVM";
+    case 0x93:  return "Amoeba";
+    case 0x94:  return "Amoeba BBT";
+    case 0x9f:  return "BSD/OS";
+    case 0xa0:  return "IBM Thinkpad hibernation";
+    case 0xa5:  return "FreeBSD";
+    case 0xa6:  return "OpenBSD";
+    case 0xa7:  return "NeXTSTEP";
+    case 0xa8:  return "Darwin UFS";
+    case 0xa9:  return "NetBSD";
+    case 0xab:  return "Darwin boot";
+    case 0xb7:  return "BSDI fs";
+    case 0xb8:  return "BSDI swap";
+    case 0xbb:  return "Boot Wizard hidden";
+    case 0xbe:  return "Solaris boot";
+    case 0xbf:  return "Solaris";
+    case 0xc1:  return "DRDOS/sec (FAT-12)";
+    case 0xc4:  return "DRDOS/sec (FAT-16 < 32M)";
+    case 0xc6:  return "DRDOS/sec (FAT-16)";
+    case 0xc7:  return "Syrinx";
+    case 0xda:  return "Non-FS data";
+    case 0xdb:  return "CP/M / CTOS / ...";
+    case 0xde:  return "Dell Utility";
+    case 0xdf:  return "BootIt";
+    case 0xe1:  return "DOS access";
+    case 0xe3:  return "DOS R/O";
+    case 0xe4:  return "SpeedStor";
+    case 0xeb:  return "BeOS fs";
+    case 0xee:  return "EFI GPT";
+    case 0xef:  return "EFI (FAT-12/16/32)";
+    case 0xf0:  return "Linux/PA-RISC boot";
+    case 0xf1:  return "SpeedStor";
+    case 0xf4:  return "SpeedStor";
+    case 0xf2:  return "DOS secondary";
+    case 0xfd:  return "Linux raid autodetect";
+    case 0xfe:  return "LANstep";
+    case 0xff:  return "BBT";
+    default:    return "Unknown";
+  }
 }
 
 /* Reads sector SECTOR from partition P into BUFFER, which must
@@ -316,9 +320,3 @@ partition_write (void *p_, block_sector_t sector, const void *buffer)
   struct partition *p = p_;
   block_write (p->block, p->start + sector, buffer);
 }
-
-static struct block_operations partition_operations =
-  {
-    partition_read,
-    partition_write
-  };

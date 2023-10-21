@@ -96,13 +96,13 @@ hash_destroy (struct hash *h, hash_action_func *destructor)
    If an equal element is already in the table, returns it
    without inserting NEW. */   
 struct hash_elem *
-hash_insert (struct hash *h, struct hash_elem *new)
+hash_insert (struct hash *h, struct hash_elem *new_elem)
 {
-  struct list *bucket = find_bucket (h, new);
-  struct hash_elem *old = find_elem (h, bucket, new);
+  struct list *bucket = find_bucket (h, new_elem);
+  struct hash_elem *old = find_elem (h, bucket, new_elem);
 
   if (old == NULL) 
-    insert_elem (h, bucket, new);
+    insert_elem (h, bucket, new_elem);
 
   rehash (h);
 
@@ -112,14 +112,14 @@ hash_insert (struct hash *h, struct hash_elem *new)
 /* Inserts NEW into hash table H, replacing any equal element
    already in the table, which is returned. */
 struct hash_elem *
-hash_replace (struct hash *h, struct hash_elem *new) 
+hash_replace (struct hash *h, struct hash_elem *new_elem) 
 {
-  struct list *bucket = find_bucket (h, new);
-  struct hash_elem *old = find_elem (h, bucket, new);
+  struct list *bucket = find_bucket (h, new_elem);
+  struct hash_elem *old = find_elem (h, bucket, new_elem);
 
   if (old != NULL)
     remove_elem (h, old);
-  insert_elem (h, bucket, new);
+  insert_elem (h, bucket, new_elem);
 
   rehash (h);
 
@@ -375,7 +375,7 @@ rehash (struct hash *h)
   if (new_bucket_cnt == old_bucket_cnt)
     return;
 
-  /* Allocate new buckets and initialize them as empty. */
+  /* Allocate new_elem buckets and initialize them as empty. */
   new_buckets = malloc (sizeof *new_buckets * new_bucket_cnt);
   if (new_buckets == NULL) 
     {
@@ -387,11 +387,11 @@ rehash (struct hash *h)
   for (i = 0; i < new_bucket_cnt; i++) 
     list_init (&new_buckets[i]);
 
-  /* Install new bucket info. */
+  /* Install new_elem bucket info. */
   h->buckets = new_buckets;
   h->bucket_cnt = new_bucket_cnt;
 
-  /* Move each old element into the appropriate new bucket. */
+  /* Move each old element into the appropriate new_elem bucket. */
   for (i = 0; i < old_bucket_cnt; i++) 
     {
       struct list *old_bucket;

@@ -85,7 +85,7 @@ static bool priority_cmp(const struct list_elem* a, const struct list_elem* b, v
 
    After calling this function, be sure to initialize the page
    allocator before trying to create any threads with
-   thread_create().
+().
 
    It is not safe to call thread_current() until this function
    finishes. */
@@ -225,6 +225,14 @@ thread_block (void)
   schedule ();
 }
 
+
+static bool
+thread_priority_greater (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+{
+    return list_entry (a, struct thread, elem)->priority >
+           list_entry (b, struct thread, elem)->priority;
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -242,16 +250,13 @@ thread_unblock (struct thread *t)
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
-  ASSERT(t->status == THREAD_BLOCKED);
-  // list_push_back (&ready_list, &t->elem);
-  list_insert_ordered(&ready_list, &t->elem, priority_cmp, NULL);
+  ASSERT (t->status == THREAD_BLOCKED);
+  list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
   t->status = THREAD_READY;
-  intr_set_level(old_level);
+  intr_set_level (old_level);
 
-  /* check if need yield*/
-  // if (t->priority > cur->priority) {
-  //   thread_yield();
-  // }
+  if (thread_current () != idle_thread && thread_current ()->priority < t->priority)
+    thread_yield ();
 }
 
 /* Returns the name of the running thread. */
@@ -319,10 +324,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread)
-    // list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered(&ready_list, &cur->elem, priority_cmp, NULL);
-    cur->status = THREAD_READY;
+  if (cur != idle_thread) 
+    list_insert_ordered (&ready_list, &cur->elem, thread_priority_greater, NULL);
+
+  cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
 }
@@ -348,7 +353,14 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *cur = thread_current ();
+  if (cur->priority > new_priority) {
+    cur->priority = new_priority;
+    thread_yield ();
+  } else
+    cur->priority = new_priority;
+  list_sort (&ready_list, thread_priority_greater, NULL);
+
 }
 
 /* Returns the current thread's priority. */
