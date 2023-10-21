@@ -180,8 +180,22 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
+  lock->priority = -1;
   sema_init (&lock->semaphore, 1);
 }
+
+
+static bool
+lock_priority_greater (const struct list_elem *a, const struct list_elem *b,
+                       void *aux UNUSED)
+{
+  struct lock *lock_a = list_entry (a, struct lock, elem);
+  struct lock *lock_b = list_entry (b, struct lock, elem);
+  ASSERT (lock_a->holder != NULL);
+  ASSERT (lock_b->holder != NULL);
+  return lock_a->holder->priority > lock_b->holder->priority;
+}
+
 
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
@@ -201,12 +215,23 @@ lock_acquire (struct lock *lock)
   /* priority donation */
   struct thread* cur = thread_current();
   struct thread* t_holder = lock->holder;
-  if (t_holder != NULL && t_holder->priority < cur->priority ) {
-    thread_set_donation_priority(t_holder, cur->priority);
+  if (t_holder != NULL) {
+    if (t_holder->priority < cur->priority) {
+      thread_set_donation_priority(t_holder, cur->priority);
+    }
   }
+  lock->priority = cur->priority;
 
+
+
+  /* wait for semaphore */
   sema_down (&lock->semaphore);
+
+  /* lock acquired */
   lock->holder = cur;
+  list_insert_ordered (&lock->holder->locks, &lock->elem, 
+                      lock_priority_greater, NULL);
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -242,13 +267,18 @@ lock_release (struct lock *lock)
 
   /* return priority */
   struct thread* cur = thread_current();
+  list_remove (&lock->elem);
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  
-  thread_yield();
-  
-  if (thread_has_donated_priority(cur)) {
-    thread_unset_donation_priority(cur);
+
+
+  /* restore the priority if it was donated */
+  if (thread_is_donated(cur)) {
+    if (list_empty(&cur->locks)) 
+      thread_set_priority(cur->init_priority);
+    else {
+      thread_set_priority(list_entry(list_front(&cur->locks), struct lock, elem)->priority);
+    }
   }
 
 }

@@ -96,7 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-  list_init(&all_list);
+  list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -255,7 +255,7 @@ thread_unblock (struct thread *t)
   t->status = THREAD_READY;
   intr_set_level (old_level);
 
-  if (thread_current () != idle_thread && thread_current ()->priority < t->priority)
+  if (!intr_context () && thread_current () != idle_thread && thread_current ()->priority < t->priority)
     thread_yield ();
 }
 
@@ -354,14 +354,24 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current ();
-  if (cur->priority > new_priority) {
-    cur->priority = new_priority;
+  if (new_priority <= cur->priority) {
+    thread_update_priority (cur, new_priority);
     thread_yield ();
   } else
-    cur->priority = new_priority;
-  list_sort (&ready_list, thread_priority_greater, NULL);
+    thread_update_priority (cur, new_priority);
 
 }
+
+void 
+thread_update_priority (struct thread *t, int new_priority) 
+{
+  t->priority = new_priority;
+  if (t->status == THREAD_READY) {
+    list_remove (&t->elem);
+    list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
+  }
+}
+
 
 /* Returns the current thread's priority. */
 int
@@ -372,27 +382,27 @@ thread_get_priority (void)
 
 /* Returns true if the current thread has donated priority. */
 bool
-thread_has_donated_priority(struct thread* t) 
+thread_is_donated(struct thread* t) 
 {
-  return t->prev_priority != 0;
+  return t->priority != t->init_priority;
 }
 
 /* Sets the donation priority of the current thread to NEW_PRIORITY. */
 void
 thread_set_donation_priority (struct thread* t, int new_priority) 
 {
-  t->prev_priority = t->priority;
   t->priority = new_priority;
-  list_sort (&ready_list, thread_priority_greater, NULL);
+  if (t->status == THREAD_READY) {
+    list_remove (&t->elem);
+    list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
+  }
 }
 
 /* Unsets the donation priority of the current thread. */
 void
 thread_unset_donation_priority (struct thread* t) 
 {
-  t->priority = t->prev_priority;
-  t->prev_priority = 0;
-  list_sort (&ready_list, thread_priority_greater, NULL);
+  thread_update_priority(t, t->init_priority);
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -544,8 +554,10 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  t->prev_priority = 0;
+  t->init_priority = priority;
   t->magic = THREAD_MAGIC;
+
+  list_init (&t->locks);
 
   t->nice = 0;
   t->recent_cpu = 0;
