@@ -97,6 +97,8 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     struct list locks;                  /* List of locks held by thread */
+    struct lock *lock_waiting;          /* Lock that thread is waiting for */
+   
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

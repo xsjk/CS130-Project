@@ -15,5 +15,7 @@
         "${workspaceFolder}/src/lib/kernel",
         "${workspaceFolder}/src/lib/user"
     ],
-    "C_Cpp.clang_format_fallbackStyle": "GNU" 
+    "C_Cpp.clang_format_fallbackStyle": "GNU",
+    "editor.indentSize": "tabSize",
+    "editor.tabSize": 2,
 }

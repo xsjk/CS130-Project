@@ -111,14 +111,16 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
+  struct thread *target = NULL; 
 
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
   sema->value++;
-  if (!list_empty (&sema->waiters)) 
+  if (!list_empty (&sema->waiters)) {
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
+  }
   intr_set_level (old_level);
 }
 
@@ -221,11 +223,18 @@ lock_acquire (struct lock *lock)
     }
   }
   lock->priority = cur->priority;
-
-
+  
+  for (struct lock* l = lock; l != NULL && l->holder != NULL; l = l->holder->lock_waiting) {
+    ASSERT(l->holder->priority == l->priority);
+    if (l->priority < cur->priority)
+      thread_set_donation_priority(l->holder, cur->priority);
+    l->priority = cur->priority;
+  }
 
   /* wait for semaphore */
+  cur->lock_waiting = lock;
   sema_down (&lock->semaphore);
+  cur->lock_waiting = NULL;
 
   /* lock acquired */
   lock->holder = cur;
