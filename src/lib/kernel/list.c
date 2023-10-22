@@ -41,6 +41,11 @@ is_head (struct list_elem *elem)
   return elem != NULL && elem->prev == NULL && elem->next != NULL;
 }
 
+bool
+list_elem_is_head(struct list_elem *elem) {
+  return is_head(elem);
+}
+
 /* Returns true if ELEM is an interior element,
    false otherwise. */
 static inline bool
@@ -49,11 +54,21 @@ is_interior (struct list_elem *elem)
   return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
 
+bool
+list_elem_is_interior(struct list_elem *elem) {
+  return is_interior(elem);
+}
+
 /* Returns true if ELEM is a tail, false otherwise. */
 static inline bool
 is_tail (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next == NULL;
+}
+
+bool
+list_elem_is_tail(struct list_elem *elem) {
+  return is_tail(elem);
 }
 
 /* Initializes LIST as an empty list. */
@@ -479,8 +494,12 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
    in the LIST are in their correct sorted positions.
    Runs in O(n) average case in the number of elements in LIST. */
 void 
-list_reordered(struct list_elem *elem, list_less_func *less, void *aux) 
+list_reorder(struct list_elem *elem, list_less_func *less, void *aux) 
 {
+  ASSERT (elem != NULL);
+  ASSERT (less != NULL);
+  ASSERT (is_interior(elem));
+
   // /// easy way
   // struct list_elem* it = list_remove (elem);
   // while(it->prev != NULL) it = it->prev;

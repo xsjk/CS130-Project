@@ -107,7 +107,7 @@ timer_sleep (int64_t ticks)
   ASSERT (intr_get_level () == INTR_ON);
 
   thread_current ()->wakeup_time = start + ticks;
-  list_insert_ordered(&sleeping_list, &thread_current()->sleepelem, wakeup_time_less, NULL);
+  list_insert_ordered(&sleeping_list, &thread_current ()->sleepelem, wakeup_time_less, NULL);
 
   intr_disable();
   thread_block();
@@ -193,7 +193,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   
-  struct thread* cur = thread_current();
+  struct thread* cur = thread_current ();
   // if (!is_idle_thread(cur)) {
   //   cur->recent_cpu++;
   // }
@@ -223,7 +223,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   struct thread *t;
 
   e = list_begin(&sleeping_list);
-  while (!list_empty(&sleeping_list)) {
+  while (!list_empty ( &sleeping_list)) {
     t = list_entry(e, struct thread, sleepelem);
     if (t->wakeup_time <= ticks) {
       e = list_remove(e);

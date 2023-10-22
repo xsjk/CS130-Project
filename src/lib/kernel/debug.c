@@ -77,7 +77,7 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
 
   printf ("Call stack of thread `%s' (status %s):", t->name, status);
 
-  if (t == thread_current()) 
+  if (t == thread_current ()) 
     {
       frame = __builtin_frame_address (1);
       retaddr = __builtin_return_address (0);

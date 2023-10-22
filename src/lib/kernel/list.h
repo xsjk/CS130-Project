@@ -173,7 +173,7 @@ bool list_is_sorted (struct list *,
                      list_less_func *, void *aux);
 void list_insert_ordered (struct list *, struct list_elem *,
                           list_less_func *, void *aux);
-void list_reordered (struct list_elem *,
+void list_reorder (struct list_elem *,
                                  list_less_func *, void *aux);
 void list_unique (struct list *, struct list *duplicates,
                   list_less_func *, void *aux);
@@ -182,6 +182,14 @@ void list_unique (struct list *, struct list *duplicates,
 struct list_elem *list_max (struct list *, list_less_func *, void *aux);
 struct list_elem *list_min (struct list *, list_less_func *, void *aux);
 
+/* Get list ptr from its elem */
 struct list* list_of(struct list_elem *elem);
+
+
+/* Functions for list_elem */
+bool list_elem_is_interior(struct list_elem *elem);
+bool list_elem_is_head(struct list_elem *elem);
+bool list_elem_is_tail(struct list_elem *elem);
+
 
 #endif /* lib/kernel/list.h */
