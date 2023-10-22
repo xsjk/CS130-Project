@@ -1,21 +1,22 @@
 {
-    "files.associations": {
-        "Make*": "makefile",
-        "backtrace": "perl",
-        "pintos": "perl",
-        "pintos-gdb": "perl",
-        "pintos-mkdisk": "perl",
-        "pintos-set-cmdline": "perl",
-        "*.ck": "perl",
-        "*.h": "c",
-    },
-    "editor.formatOnSave": false,
-    "C_Cpp.default.systemIncludePath": [
-        "${workspaceFolder}/src/",
-        "${workspaceFolder}/src/lib/kernel",
-        "${workspaceFolder}/src/lib/user"
-    ],
-    "C_Cpp.clang_format_fallbackStyle": "GNU",
-    "editor.indentSize": "tabSize",
-    "editor.tabSize": 2,
+  "files.associations": {
+    "Make*": "makefile",
+    "backtrace": "perl",
+    "pintos": "perl",
+    "pintos-gdb": "perl",
+    "pintos-mkdisk": "perl",
+    "pintos-set-cmdline": "perl",
+    "*.ck": "perl",
+    "*.h": "c"
+  },
+  "editor.formatOnSave": true,
+  "C_Cpp.default.systemIncludePath": [
+    "${workspaceFolder}/src/",
+    "${workspaceFolder}/src/lib/kernel",
+    "${workspaceFolder}/src/lib/user"
+  ],
+  "C_Cpp.formatting": "clangFormat",
+  "C_Cpp.clang_format_fallbackStyle": "GNU",
+  "editor.indentSize": "tabSize",
+  "editor.tabSize": 2
 }

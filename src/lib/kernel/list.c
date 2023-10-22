@@ -42,8 +42,9 @@ is_head (struct list_elem *elem)
 }
 
 bool
-list_elem_is_head(struct list_elem *elem) {
-  return is_head(elem);
+list_elem_is_head (struct list_elem *elem)
+{
+  return is_head (elem);
 }
 
 /* Returns true if ELEM is an interior element,
@@ -55,8 +56,9 @@ is_interior (struct list_elem *elem)
 }
 
 bool
-list_elem_is_interior(struct list_elem *elem) {
-  return is_interior(elem);
+list_elem_is_interior (struct list_elem *elem)
+{
+  return is_interior (elem);
 }
 
 /* Returns true if ELEM is a tail, false otherwise. */
@@ -67,8 +69,9 @@ is_tail (struct list_elem *elem)
 }
 
 bool
-list_elem_is_tail(struct list_elem *elem) {
-  return is_tail(elem);
+list_elem_is_tail (struct list_elem *elem)
+{
+  return is_tail (elem);
 }
 
 /* Initializes LIST as an empty list. */
@@ -115,7 +118,7 @@ list_end (struct list *list)
 /* Returns the LIST's reverse beginning, for iterating through
    LIST in reverse order, from back to front. */
 struct list_elem *
-list_rbegin (struct list *list) 
+list_rbegin (struct list *list)
 {
   ASSERT (list != NULL);
   return list->tail.prev;
@@ -145,7 +148,7 @@ list_prev (struct list_elem *elem)
         }
 */
 struct list_elem *
-list_rend (struct list *list) 
+list_rend (struct list *list)
 {
   ASSERT (list != NULL);
   return &list->head;
@@ -157,13 +160,13 @@ list_rend (struct list *list)
    through a list, e.g.:
 
       e = list_head (&list);
-      while ((e = list_next (e)) != list_end (&list)) 
+      while ((e = list_next (e)) != list_end (&list))
         {
           ...
         }
 */
 struct list_elem *
-list_head (struct list *list) 
+list_head (struct list *list)
 {
   ASSERT (list != NULL);
   return &list->head;
@@ -171,7 +174,7 @@ list_head (struct list *list)
 
 /* Return's LIST's tail. */
 struct list_elem *
-list_tail (struct list *list) 
+list_tail (struct list *list)
 {
   ASSERT (list != NULL);
   return &list->tail;
@@ -196,8 +199,8 @@ list_insert (struct list_elem *before, struct list_elem *elem)
    current list, then inserts them just before BEFORE, which may
    be either an interior element or a tail. */
 void
-list_splice (struct list_elem *before,
-             struct list_elem *first, struct list_elem *last)
+list_splice (struct list_elem *before, struct list_elem *first,
+             struct list_elem *last)
 {
   ASSERT (is_interior (before) || is_tail (before));
   if (first == last)
@@ -267,7 +270,7 @@ list_remove (struct list_elem *elem)
   elem->prev->next = elem->next;
   elem->next->prev = elem->prev;
   struct list_elem *next = elem->next;
-  /// NOTE: we set elem->prev and elem->next to NULL to indicate that 
+  /// NOTE: we set elem->prev and elem->next to NULL to indicate that
   ///       this element is not in any list
   elem->prev = elem->next = NULL;
   return next;
@@ -333,7 +336,7 @@ list_empty (struct list *list)
 
 /* Swaps the `struct list_elem *'s that A and B point to. */
 static void
-swap (struct list_elem **a, struct list_elem **b) 
+swap (struct list_elem **a, struct list_elem **b)
 {
   struct list_elem *t = *a;
   *a = *b;
@@ -344,7 +347,7 @@ swap (struct list_elem **a, struct list_elem **b)
 void
 list_reverse (struct list *list)
 {
-  if (!list_empty (list)) 
+  if (!list_empty (list))
     {
       struct list_elem *e;
 
@@ -358,11 +361,11 @@ list_reverse (struct list *list)
 /* Returns true only if the list elements A through B (exclusive)
    are in order according to LESS given auxiliary data AUX. */
 static bool
-is_sorted (struct list_elem *a, struct list_elem *b,
-           list_less_func *less, void *aux)
+is_sorted (struct list_elem *a, struct list_elem *b, list_less_func *less,
+           void *aux)
 {
   if (a != b)
-    while ((a = list_next (a)) != b) 
+    while ((a = list_next (a)) != b)
       if (less (a, list_prev (a), aux))
         return false;
   return true;
@@ -381,8 +384,8 @@ find_end_of_run (struct list_elem *a, struct list_elem *b,
   ASSERT (b != NULL);
   ASSERT (less != NULL);
   ASSERT (a != b);
-  
-  do 
+
+  do
     {
       a = list_next (a);
     }
@@ -397,8 +400,7 @@ find_end_of_run (struct list_elem *a, struct list_elem *b,
    AUX.  The output range will be sorted the same way. */
 static void
 inplace_merge (struct list_elem *a0, struct list_elem *a1b0,
-               struct list_elem *b1,
-               list_less_func *less, void *aux)
+               struct list_elem *b1, list_less_func *less, void *aux)
 {
   ASSERT (a0 != NULL);
   ASSERT (a1b0 != NULL);
@@ -408,9 +410,9 @@ inplace_merge (struct list_elem *a0, struct list_elem *a1b0,
   ASSERT (is_sorted (a1b0, b1, less, aux));
 
   while (a0 != a1b0 && a1b0 != b1)
-    if (!less (a1b0, a0, aux)) 
+    if (!less (a1b0, a0, aux))
       a0 = list_next (a0);
-    else 
+    else
       {
         a1b0 = list_next (a1b0);
         list_splice (a0, list_prev (a1b0), a1b0);
@@ -423,7 +425,7 @@ inplace_merge (struct list_elem *a0, struct list_elem *a1b0,
 void
 list_sort (struct list *list, list_less_func *less, void *aux)
 {
-  size_t output_run_cnt;        /* Number of runs output in current pass. */
+  size_t output_run_cnt; /* Number of runs output in current pass. */
 
   ASSERT (list != NULL);
   ASSERT (less != NULL);
@@ -432,9 +434,9 @@ list_sort (struct list *list, list_less_func *less, void *aux)
      nondecreasing elements, until only one run is left. */
   do
     {
-      struct list_elem *a0;     /* Start of first run. */
-      struct list_elem *a1b0;   /* End of first run, start of second. */
-      struct list_elem *b1;     /* End of second run. */
+      struct list_elem *a0;   /* Start of first run. */
+      struct list_elem *a1b0; /* End of first run, start of second. */
+      struct list_elem *b1;   /* End of second run. */
 
       output_run_cnt = 0;
       for (a0 = list_begin (list); a0 != list_end (list); a0 = b1)
@@ -487,18 +489,17 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
   return list_insert (e, elem);
 }
 
-
 /* Reorders LIST according to LESS given auxiliary data AUX, given
    ELEM, which must already be in LIST somewhere but doesn't need
-   to be in its correct sorted position, while all the other elements 
+   to be in its correct sorted position, while all the other elements
    in the LIST are in their correct sorted positions.
    Runs in O(n) average case in the number of elements in LIST. */
-void 
-list_reorder(struct list_elem *elem, list_less_func *less, void *aux) 
+void
+list_reorder (struct list_elem *elem, list_less_func *less, void *aux)
 {
   ASSERT (elem != NULL);
   ASSERT (less != NULL);
-  ASSERT (is_interior(elem));
+  ASSERT (is_interior (elem));
 
   // /// easy way
   // struct list_elem* it = list_remove (elem);
@@ -506,15 +507,14 @@ list_reorder(struct list_elem *elem, list_less_func *less, void *aux)
   // list_insert_ordered (it, elem, less, aux);
 
   /// move effienct way
-  struct list_elem* it = list_remove(elem);
+  struct list_elem *it = list_remove (elem);
 
-  while(!is_tail(it) && less(it, elem, aux))
+  while (!is_tail (it) && less (it, elem, aux))
     it = it->next;
-  while(!is_head(it->prev) && less(elem, it->prev, aux)) 
+  while (!is_head (it->prev) && less (elem, it->prev, aux))
     it = it->prev;
-  
-  list_insert(it, elem);
-  
+
+  list_insert (it, elem);
 }
 
 /* Iterates through LIST and removes all but the first in each
@@ -522,8 +522,8 @@ list_reorder(struct list_elem *elem, list_less_func *less, void *aux)
    given auxiliary data AUX.  If DUPLICATES is non-null, then the
    elements from LIST are appended to DUPLICATES. */
 void
-list_unique (struct list *list, struct list *duplicates,
-             list_less_func *less, void *aux)
+list_unique (struct list *list, struct list *duplicates, list_less_func *less,
+             void *aux)
 {
   struct list_elem *elem, *next;
 
@@ -534,7 +534,7 @@ list_unique (struct list *list, struct list *duplicates,
 
   elem = list_begin (list);
   while ((next = list_next (elem)) != list_end (list))
-    if (!less (elem, next, aux) && !less (next, elem, aux)) 
+    if (!less (elem, next, aux) && !less (next, elem, aux))
       {
         list_remove (next);
         if (duplicates != NULL)
@@ -552,13 +552,13 @@ struct list_elem *
 list_max (struct list *list, list_less_func *less, void *aux)
 {
   struct list_elem *max = list_begin (list);
-  if (max != list_end (list)) 
+  if (max != list_end (list))
     {
       struct list_elem *e;
-      
+
       for (e = list_next (max); e != list_end (list); e = list_next (e))
         if (less (max, e, aux))
-          max = e; 
+          max = e;
     }
   return max;
 }
@@ -571,13 +571,13 @@ struct list_elem *
 list_min (struct list *list, list_less_func *less, void *aux)
 {
   struct list_elem *min = list_begin (list);
-  if (min != list_end (list)) 
+  if (min != list_end (list))
     {
       struct list_elem *e;
-      
+
       for (e = list_next (min); e != list_end (list); e = list_next (e))
         if (less (e, min, aux))
-          min = e; 
+          min = e;
     }
   return min;
 }
