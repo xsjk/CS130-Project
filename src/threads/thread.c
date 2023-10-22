@@ -71,12 +71,6 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool 
-priority_cmp(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) 
-{
-    /* lower numbers correspond to lower priority */
-    return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
-}
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -250,14 +244,14 @@ thread_unblock (struct thread *t)
   struct thread* cur = thread_current();
 
   ASSERT (is_thread (t));
+  ASSERT (t->status == THREAD_BLOCKED);
 
   old_level = intr_disable ();
-  ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 
-  if (!intr_context () && thread_current () != idle_thread && thread_current ()->priority < t->priority)
+  if (!intr_context () && cur != idle_thread && cur->priority < t->priority)
     thread_yield ();
 }
 
@@ -356,35 +350,15 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *cur = thread_current ();
-  if (new_priority < cur->priority) {
-    if (!thread_is_donated(cur))
-      thread_update_priority (cur, new_priority);
-    cur->init_priority = new_priority;
-    thread_yield ();
-  } else {
-    if (!thread_is_donated(cur))
-      thread_update_priority (cur, new_priority);
-    cur->init_priority = new_priority;
-    // thread_yield ();
-  }
+  bool donated = thread_is_donated(cur);
+  
+  cur->init_priority = new_priority;
+  
+  if (!donated)
+    thread_update_priority (cur, new_priority);
+
 
 }
-
-void 
-thread_update_priority (struct thread *t, int new_priority) 
-{
-  t->priority = new_priority;
-  if (t->status == THREAD_READY) {
-    list_remove (&t->elem);
-    list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
-  }
-  /// TODO: get list* from list_elem* in O(1)
-//   struct list_elem* it = list_remove (&t->elem);
-//   while(it->prev != NULL) it = it->prev;
-//   struct list* l = (struct list*) it;
-//   list_insert_ordered (l, &t->elem, thread_priority_greater, NULL);
-}
-
 
 /* Returns the current thread's priority. */
 int
@@ -400,22 +374,31 @@ thread_is_donated(struct thread* t)
   return t->priority != t->init_priority;
 }
 
+
+void 
+thread_update_priority (struct thread *t, int new_priority) 
+{
+  bool yield = new_priority < t->priority;
+
+  t->priority = new_priority;
+  
+  if (t->status == THREAD_READY) {
+    list_reordered (&t->elem, thread_priority_greater, NULL);
+  }
+
+  if (yield)
+    thread_yield ();
+}
+
+
 /* Sets the donation priority of the current thread to NEW_PRIORITY. */
 void
 thread_set_donation_priority (struct thread* t, int new_priority) 
 {
+  ASSERT (t->priority < new_priority);
   t->priority = new_priority;
-  // if (t->status == THREAD_READY) {
-  //   list_remove (&t->elem);
-  //   list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
-  // }
+  list_reordered (&t->elem, thread_priority_greater, NULL);
 
-  /// TODO: get list* from list_elem* in O(1)
-  struct list_elem* it = list_remove (&t->elem);
-  while(it->prev != NULL) it = it->prev;
-  struct list* l = (struct list*) it;
-  list_insert_ordered (l, &t->elem, thread_priority_greater, NULL);
-  
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -461,12 +444,14 @@ thread_get_recent_cpu (void)
 
 /*update*/
 void
-update_load_avg() {
+update_load_avg(void) 
+{
   load_avg = (59 / 60) * load_avg + (1 / 60) * list_size(&ready_list); 
 }
 
 void
-update_recent_cpu() {
+update_recent_cpu(void) 
+{
   for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
     struct thread* t = list_entry(it, struct thread, allelem);
     t->recent_cpu = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu + t->nice);  
@@ -474,7 +459,8 @@ update_recent_cpu() {
 }
 
 void
-update_priority() {
+update_priority(void) 
+{
   for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
     struct thread* t = list_entry(it, struct thread, allelem);
     t->priority = PRI_MAX - (t->recent_cpu / 4) - (t->nice * 2);
@@ -578,7 +564,7 @@ init_thread (struct thread *t, const char *name, int priority)
   load_avg = 0;
 
   old_level = intr_disable ();
-  list_insert_ordered(&all_list, &t->allelem, priority_cmp, NULL);
+  list_insert_ordered(&all_list, &t->allelem, thread_priority_greater, NULL);
   intr_set_level(old_level);
 }
 
