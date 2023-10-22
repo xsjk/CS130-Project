@@ -458,6 +458,33 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
   return list_insert (e, elem);
 }
 
+
+/* Reorders LIST according to LESS given auxiliary data AUX, given
+   ELEM, which must already be in LIST somewhere but doesn't need
+   to be in its correct sorted position, while all the other elements 
+   in the LIST are in their correct sorted positions.
+   Runs in O(n) average case in the number of elements in LIST. */
+void 
+list_reordered(struct list_elem *elem, list_less_func *less, void *aux) 
+{
+  /// easy way
+  // struct list_elem* it = list_remove (elem);
+  // while(it->prev != NULL) it = it->prev;
+  // list_insert_ordered (it, elem, less, aux);
+
+  /// move effienct way
+  struct list_elem* it = list_remove(elem);
+
+  while(!is_tail(it) && less(it, elem, aux)) it = it->next; 
+  while(!is_head(it) && less(elem, it, aux)) it = it->prev;
+
+  if (is_head(it))
+    list_push_front(it, elem); 
+  else
+    list_insert(it, elem);
+  
+}
+
 /* Iterates through LIST and removes all but the first in each
    set of adjacent elements that are equal according to LESS
    given auxiliary data AUX.  If DUPLICATES is non-null, then the
