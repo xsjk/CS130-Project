@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/fixed_point.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -418,7 +419,7 @@ thread_set_nice (int nice UNUSED)
   /* Not yet implemented. */
   struct thread *cur = thread_current ();
   cur->nice = nice;
-  cur->priority = PRI_MAX - (cur->recent_cpu / 4) - (nice * 2);
+  cur->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (nice * 2);
 }
 
 /* Returns the current thread's nice value. */
@@ -438,7 +439,8 @@ int
 thread_get_load_avg (void)
 {
   /* Not yet implemented. */
-  return round (100 * load_avg);
+  // return round(100 * load_avg);
+  return fp_to_int_round (fp_mul (fp_create (100), load_avg));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -447,14 +449,22 @@ thread_get_recent_cpu (void)
 {
   /* Not yet implemented. */
   struct thread *cur = thread_current ();
-  return round (100 * cur->recent_cpu);
+  // return round(100 * cur->recent_cpu);
+  return fp_to_int_round (fp_mul (cur->recent_cpu, fp_create (100)));
 }
 
 /*update*/
 void
 update_load_avg (void)
 {
-  load_avg = (59 / 60) * load_avg + (1 / 60) * list_size (&ready_list);
+  // load_avg = (59 / 60) * load_avg + (1 / 60) * (list_size(&ready_list) +
+  // (thread_current() != idle_thread));
+  load_avg
+      = fp_add (fp_mul (fp_div (fp_create (59), fp_create (60)), load_avg),
+                fp_mul (fp_div (fp_create (1), fp_create (60)),
+                        fp_create (list_size (&ready_list)
+                                   + (thread_current () != idle_thread))));
+  int avg_int = fp_to_int_round (load_avg);
 }
 
 void
@@ -464,8 +474,14 @@ update_recent_cpu (void)
        it != list_end (&all_list); it = list_next (it))
     {
       struct thread *t = list_entry (it, struct thread, allelem);
+      // t->recent_cpu = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu +
+      // t->nice);
       t->recent_cpu
-          = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu + t->nice);
+          = fp_add (fp_mul (fp_div (fp_mul (fp_create (2), load_avg),
+                                    fp_add (fp_mul (fp_create (2), load_avg),
+                                            fp_create (1))),
+                            t->recent_cpu),
+                    fp_create (t->nice));
     }
 }
 
@@ -476,7 +492,7 @@ update_priority (void)
        it != list_end (&all_list); it = list_next (it))
     {
       struct thread *t = list_entry (it, struct thread, allelem);
-      t->priority = PRI_MAX - (t->recent_cpu / 4) - (t->nice * 2);
+      t->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (t->nice * 2);
     }
 }
 
@@ -573,8 +589,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->lock_waiting = NULL;
 
   t->nice = 0;
-  t->recent_cpu = 0;
-  load_avg = 0;
+  t->recent_cpu = fp_create (0);
+  load_avg = fp_create (0);
 
   old_level = intr_disable ();
   list_insert_ordered (&all_list, &t->allelem, thread_priority_greater, NULL);
