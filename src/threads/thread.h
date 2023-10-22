@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "threads/fixed_point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -110,7 +111,7 @@ struct thread
 
     int64_t wakeup_time;                /* Time to wake up */
     int nice;
-    int recent_cpu;
+    fixed_point recent_cpu;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -156,7 +157,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-int load_avg;
+fixed_point load_avg;
 
 void update_load_avg (void); 
 void update_recent_cpu (void); 

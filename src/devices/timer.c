@@ -8,7 +8,8 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "threads/fixed_point.h"
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -194,30 +195,29 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   
   struct thread* cur = thread_current();
-  // if (!is_idle_thread(cur)) {
-  //   cur->recent_cpu++;
-  // }
 
-  /*Each time a timer interrupt occurs*/
-  // update recent cpu, unless the idle thread is running
+  if (thread_mlfqs) {
+     /*Each time a timer interrupt occurs*/
+    // update recent cpu, unless the idle thread is running
+    if (!is_idle_thread(cur)) {
+      // cur->recent_cpu++;
+      cur->recent_cpu = fp_add(cur->recent_cpu, fp_create(1));
+    }
 
-  /* every fourth clock tick */
-  // update priority
-  if (ticks % 4 == 0) {
-    //   int priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice() * 2);
-    //   thread_set_priority(priority)
-      // update_priority();
+    /* every fourth clock tick */
+    // update priority for each thread
+    if (ticks % 4 == 0) {
+      update_priority();
+    }
+
+    /* per second */
+    // update load_avg & recent_cpu for each thread
+    if (ticks % TIMER_FREQ == 0) {
+        update_load_avg();
+        update_recent_cpu();
+    }
   }
-
-  /* per second */
-  // update load_avg & recent_cpu
-  if (ticks % TIMER_FREQ == 0) {
-      update_load_avg();
-      update_recent_cpu();
-  }
-
-
-
+  
   // wake up sleeping threads
   struct list_elem *e;
   struct thread *t;
