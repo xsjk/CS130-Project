@@ -479,7 +479,7 @@ list_reordered(struct list_elem *elem, list_less_func *less, void *aux)
   while(!is_head(it) && less(elem, it, aux)) it = it->prev;
 
   if (is_head(it))
-    list_push_front(it, elem); 
+    list_push_front((struct list*)it, elem); 
   else
     list_insert(it, elem);
   

@@ -111,7 +111,6 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-  struct thread *target = NULL; 
 
   ASSERT (sema != NULL);
 
@@ -214,18 +213,13 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  /* priority donation */
   struct thread* cur = thread_current();
-  struct thread* t_holder = lock->holder;
-  if (t_holder != NULL) {
-    if (t_holder->priority < cur->priority) {
-      thread_set_donation_priority(t_holder, cur->priority);
-    }
-  }
-  lock->priority = cur->priority;
-  
-  for (struct lock* l = lock; l != NULL && l->holder != NULL; l = l->holder->lock_waiting) {
-    ASSERT(l->holder->priority == l->priority);
+
+  /* priority donation */
+  if (!lock->holder)
+    lock->priority = cur->priority;
+  for (struct lock* l = lock; l && l->holder; l = l->holder->lock_waiting) {
+    // ASSERT(l->holder->priority == l->priority);
     if (l->priority < cur->priority)
       thread_set_donation_priority(l->holder, cur->priority);
     l->priority = cur->priority;
@@ -236,7 +230,7 @@ lock_acquire (struct lock *lock)
   sema_down (&lock->semaphore);
   cur->lock_waiting = NULL;
 
-  /* lock acquired */
+  /* lock already acquired */
   lock->holder = cur;
   list_insert_ordered (&lock->holder->locks, &lock->elem, 
                       lock_priority_greater, NULL);
@@ -286,18 +280,10 @@ lock_release (struct lock *lock)
     
     struct thread *cur = thread_current ();
 
-    int new_priority;
-    if (list_empty(&cur->locks)) 
-      new_priority = cur->init_priority;
-    else
-      new_priority = list_entry(list_front(&cur->locks), struct lock, elem)->priority;
-      
-    if (new_priority < cur->priority) {
-      thread_update_priority (cur, new_priority);
-      thread_yield ();
-    } else
-      thread_update_priority (cur, new_priority);
-
+    int old_priority = list_empty(&cur->locks) ? cur->init_priority : 
+                       list_entry(list_front(&cur->locks), struct lock, elem)->priority;
+    
+    thread_update_priority (cur, old_priority);
   }
 
 }

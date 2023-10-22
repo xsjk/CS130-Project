@@ -197,8 +197,6 @@ partition_type_name (uint8_t type)
      From util-linux-2.12r/fdisk/i386_sys_types.c.
      This initializer makes use of a C99 feature that allows
      array elements to be initialized by index. */
-  static const char *type_names[256];
-
   switch (type) {
     case 0x00:  return "Empty";
     case 0x01:  return "FAT12";

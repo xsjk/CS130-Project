@@ -154,13 +154,13 @@ void thread_set_donation_priority (struct thread *, int new_priority);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
-int thread_get_load_avg(void);
+int thread_get_load_avg (void);
 
 int load_avg;
 
-void update_load_avg(); 
-void update_recent_cpu(); 
-void update_priority(); 
+void update_load_avg (void); 
+void update_recent_cpu (void); 
+void update_priority (void); 
 
 bool is_idle_thread(struct thread *);
 
