@@ -24,7 +24,7 @@ struct lock
   struct semaphore semaphore; /* Binary semaphore controlling access. */
   struct list_elem elem;      /* List element. */
   int priority;               /* When donation is going to happen,
-                                 the priority of the receiver is stored here */
+                                 the donated priority is stored here. */
 };
 
 void lock_init (struct lock *);

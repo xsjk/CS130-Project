@@ -353,15 +353,26 @@ void
 thread_set_priority (int new_priority)
 {
   struct thread *cur = thread_current ();
+
+  ASSERT (cur->status == THREAD_RUNNING)
+
   bool donated = thread_is_donated ();
 
   cur->true_priority = new_priority;
 
   if (!donated)
+    /// do not set running priority if donated
     thread_set_running_priority (new_priority);
 }
 
-/* Returns the current thread's priority. */
+/* Return the name of current thread */
+const char *
+thread_get_name (void)
+{
+  return thread_current ()->name;
+}
+
+/* Returns the running priority of current thread */
 int
 thread_get_priority (void)
 {
@@ -384,12 +395,17 @@ thread_set_running_priority (int new_priority)
 {
   struct thread *cur = thread_current ();
 
+  ASSERT (cur->status == THREAD_RUNNING);
+
+  /// TODO: should be more precise
   bool yield = new_priority < cur->priority;
 
   cur->priority = new_priority;
 
-  if (list_elem_is_interior (&cur->elem))
-    list_reorder (&cur->elem, thread_priority_greater, NULL);
+  /// NOTE: we do not need to sort the list that hold cur->elem.
+  ///       Since this thread is running,
+  ///       it should neither be in ready_list nor sema->waiters.
+  ///       Therefore, cur is in none of the lists.
 
   if (yield)
     thread_yield ();
