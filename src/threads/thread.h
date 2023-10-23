@@ -72,7 +72,7 @@ typedef int tid_t;
          instead.
 
    The first symptom of either of these problems will probably be
-   an assertion failure in thread_current(), which checks that
+   an assertion failure in thread_current (), which checks that
    the `magic' member of the running thread's `struct thread' is
    set to THREAD_MAGIC.  Stack overflow will normally change this
    value, triggering the assertion. */
@@ -90,7 +90,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int init_priority;                  /* priority before borrow */
+    int true_priority;                  /* Priority (before any borrow) */
     struct list_elem allelem;           /* List element for all threads list. */
     struct list_elem sleepelem;         /* List element for sleep threads list. */
 
@@ -145,12 +145,13 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-void thread_update_priority (struct thread *t, int);
+void thread_set_running_priority (int);
 
 
-bool thread_is_donated (struct thread *);
+bool thread_is_donated (void);
 void thread_set_donation_priority (struct thread *, int new_priority);
 
+struct list* thread_get_elem_holder(struct thread *);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
