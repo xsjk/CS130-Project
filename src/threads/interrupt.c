@@ -57,7 +57,6 @@ static uint64_t make_trap_gate (void (*) (void), int dpl);
 static inline uint64_t make_idtr_operand (uint16_t limit, void *base);
 
 /* Interrupt handlers. */
-void intr_handler (struct intr_frame *args);
 static void unexpected_interrupt (const struct intr_frame *);
 
 /* Returns the current interrupt status. */

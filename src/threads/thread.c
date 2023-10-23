@@ -16,6 +16,8 @@
 #include "userprog/process.h"
 #endif
 
+fixed_point load_avg;
+
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -430,9 +432,6 @@ thread_get_nice (void)
   struct thread *cur = thread_current ();
   return cur->nice;
 }
-
-#include <round.h>
-#define round(num) ROUND_UP (num, 1)
 
 /* Returns 100 times the system load average. */
 int

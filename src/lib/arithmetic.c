@@ -153,10 +153,20 @@ smod64 (int64_t n, int64_t d)
 
 /* These are the routines that GCC calls. */
 
-long long __divdi3 (long long n, long long d);
-long long __moddi3 (long long n, long long d);
-unsigned long long __udivdi3 (unsigned long long n, unsigned long long d);
-unsigned long long __umoddi3 (unsigned long long n, unsigned long long d);
+// if C++
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  long long __divdi3 (long long n, long long d);
+  long long __moddi3 (long long n, long long d);
+  unsigned long long __udivdi3 (unsigned long long n, unsigned long long d);
+  unsigned long long __umoddi3 (unsigned long long n, unsigned long long d);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* Signed 64-bit division. */
 long long

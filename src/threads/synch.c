@@ -235,6 +235,7 @@ undonate (void)
                 : list_entry (list_front (&cur->locks), struct lock, elem)
                       ->priority;
 
+      // ASSERT (old_priority <= cur->priority);
       thread_set_running_priority (old_priority);
     }
 }
@@ -302,6 +303,7 @@ lock_release (struct lock *lock)
   /* return priority */
   list_remove (&lock->elem);
   lock->holder = NULL;
+
   sema_up (&lock->semaphore);
 
   undonate ();

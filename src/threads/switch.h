@@ -17,15 +17,27 @@ struct switch_threads_frame
 /* Switches from CUR, which must be the running thread, to NEXT,
    which must also be running switch_threads(), returning CUR in
    NEXT's context. */
-struct thread *switch_threads (struct thread *cur, struct thread *next);
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  struct thread *switch_threads (struct thread *cur, struct thread *next);
+
+  void switch_entry (void);
+
+  void thread_schedule_tail (struct thread *prev);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* Stack frame for switch_entry(). */
 struct switch_entry_frame
 {
   void (*eip) (void);
 };
-
-void switch_entry (void);
 
 /* Pops the CUR and NEXT arguments off the stack, for use in
    initializing threads. */

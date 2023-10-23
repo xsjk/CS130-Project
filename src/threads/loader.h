@@ -35,6 +35,17 @@
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+  void intr_handler (struct intr_frame *frame);
+
+#ifdef __cplusplus
+}
+#endif
+
 /* Amount of physical memory, in 4 kB pages. */
 extern uint32_t init_ram_pages;
 #endif
