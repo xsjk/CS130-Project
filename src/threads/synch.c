@@ -253,6 +253,8 @@ lock_acquire (struct lock *lock)
 
   struct thread* cur = thread_current ();
 
+  /* advanced scheduler does not do priority donation */
+
   if (!thread_mlfqs) {
     donate(lock);
     cur->lock_waiting = lock;
@@ -266,10 +268,11 @@ lock_acquire (struct lock *lock)
 
   /* lock already acquired */
   lock->holder = cur;
-  if(!thread_mlfqs)
-    list_insert_ordered(&cur->locks, &lock->elem,
-    lock_priority_greater, NULL);
-
+  if (!thread_mlfqs) {
+      list_insert_ordered(&cur->locks, &lock->elem,
+        lock_priority_greater, NULL);
+  }
+  
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -308,12 +311,13 @@ lock_release (struct lock *lock)
     list_remove(&lock->elem);
   }
 
+  if(!thread_mlfqs) {
+  undonate();
+  }
+
   lock->holder = NULL;
   sema_up(&lock->semaphore);
 
-  if(!thread_mlfqs) {
-    undonate();
-  }
 }
 
 /* Returns true if the current thread holds LOCK, false

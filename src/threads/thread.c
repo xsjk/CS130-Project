@@ -470,7 +470,6 @@ update_load_avg(void)
 {
   // load_avg = (59 / 60) * load_avg + (1 / 60) * (list_size(&ready_list) + (thread_current() != idle_thread));
   load_avg = fp_add(fp_mul(fp_div(fp_create(59), fp_create(60)), load_avg), fp_mul(fp_div(fp_create(1), fp_create(60)), fp_create(list_size(&ready_list) + (thread_current() != idle_thread))));
-  int avg_int = fp_to_int_round(load_avg);
 }
 
 void
@@ -479,8 +478,11 @@ update_recent_cpu(void)
   for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
     struct thread* t = list_entry(it, struct thread, allelem);
     // t->recent_cpu = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu + t->nice);  
-    if (t != idle_thread)
+    if (t != idle_thread) {
       t->recent_cpu = fp_add(fp_mul(fp_div(fp_mul(fp_create(2), load_avg), fp_add(fp_mul(fp_create(2), load_avg), fp_create(1))), t->recent_cpu), fp_create(t->nice));
+      // t->priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (t->nice * 2);
+      t->priority = fp_to_int_round((fp_sub(fp_create(PRI_MAX), fp_div(t->recent_cpu, fp_create(4))), fp_mul(fp_create(t->nice), fp_create(2))));
+    }
   }
 }
 
@@ -489,7 +491,9 @@ update_priority(void)
 {
   for (struct list_elem* it = list_begin(&all_list); it != list_end(&all_list); it = list_next(it)) {
     struct thread* t = list_entry(it, struct thread, allelem);
-    t->priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (t->nice * 2);
+    if (t != idle_thread)
+      // t->priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (t->nice * 2);
+      t->priority = fp_to_int_round((fp_sub(fp_create(PRI_MAX), fp_div(t->recent_cpu, fp_create(4))), fp_mul(fp_create(t->nice), fp_create(2))));
   }
 }
 

@@ -41,6 +41,11 @@ is_head (struct list_elem *elem)
   return elem != NULL && elem->prev == NULL && elem->next != NULL;
 }
 
+bool
+list_elem_is_head(struct list_elem *elem) {
+  return is_head(elem);
+}
+
 /* Returns true if ELEM is an interior element,
    false otherwise. */
 static inline bool
@@ -49,11 +54,21 @@ is_interior (struct list_elem *elem)
   return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
 
+bool
+list_elem_is_interior(struct list_elem *elem) {
+  return is_interior(elem);
+}
+
 /* Returns true if ELEM is a tail, false otherwise. */
 static inline bool
 is_tail (struct list_elem *elem)
 {
   return elem != NULL && elem->prev != NULL && elem->next == NULL;
+}
+
+bool
+list_elem_is_tail(struct list_elem *elem) {
+  return is_tail(elem);
 }
 
 /* Initializes LIST as an empty list. */
@@ -251,7 +266,11 @@ list_remove (struct list_elem *elem)
   ASSERT (is_interior (elem));
   elem->prev->next = elem->next;
   elem->next->prev = elem->prev;
-  return elem->next;
+  struct list_elem *next = elem->next;
+  /// NOTE: we set elem->prev and elem->next to NULL to indicate that 
+  ///       this element is not in any list
+  elem->prev = elem->next = NULL;
+  return next;
 }
 
 /* Removes the front element from LIST and returns it.
@@ -439,6 +458,16 @@ list_sort (struct list *list, list_less_func *less, void *aux)
   ASSERT (is_sorted (list_begin (list), list_end (list), less, aux));
 }
 
+/* Returns true if the list elements A through B (exclusive) are
+   in order according to LESS given auxiliary data AUX. */
+bool
+list_is_sorted (struct list *list, list_less_func *less, void *aux)
+{
+  ASSERT (list != NULL);
+  ASSERT (less != NULL);
+  return is_sorted (list_begin (list), list_end (list), less, aux);
+}
+
 /* Inserts ELEM in the proper position in LIST, which must be
    sorted according to LESS given auxiliary data AUX.
    Runs in O(n) average case in the number of elements in LIST. */
@@ -465,9 +494,13 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
    in the LIST are in their correct sorted positions.
    Runs in O(n) average case in the number of elements in LIST. */
 void 
-list_reordered(struct list_elem *elem, list_less_func *less, void *aux) 
+list_reorder(struct list_elem *elem, list_less_func *less, void *aux) 
 {
-  /// easy way
+  ASSERT (elem != NULL);
+  ASSERT (less != NULL);
+  ASSERT (is_interior(elem));
+
+  // /// easy way
   // struct list_elem* it = list_remove (elem);
   // while(it->prev != NULL) it = it->prev;
   // list_insert_ordered (it, elem, less, aux);
@@ -475,13 +508,12 @@ list_reordered(struct list_elem *elem, list_less_func *less, void *aux)
   /// move effienct way
   struct list_elem* it = list_remove(elem);
 
-  while(!is_tail(it) && less(it, elem, aux)) it = it->next; 
-  while(!is_head(it) && less(elem, it, aux)) it = it->prev;
-
-  if (is_head(it))
-    list_push_front((struct list*)it, elem); 
-  else
-    list_insert(it, elem);
+  while(!is_tail(it) && less(it, elem, aux))
+    it = it->next;
+  while(!is_head(it->prev) && less(elem, it->prev, aux)) 
+    it = it->prev;
+  
+  list_insert(it, elem);
   
 }
 
@@ -548,4 +580,16 @@ list_min (struct list *list, list_less_func *less, void *aux)
           min = e; 
     }
   return min;
+}
+
+/* Returns the list pointer of the list that contains the element */
+struct list *
+list_of (struct list_elem *elem)
+{
+  ASSERT (elem != NULL);
+  if (elem->next == NULL && elem->prev == NULL)
+    return NULL;
+  while (!is_head (elem))
+    elem = elem->prev;
+  return list_entry (elem, struct list, head);
 }
