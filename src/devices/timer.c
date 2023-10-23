@@ -1,16 +1,14 @@
 #include "devices/timer.h"
 #include "devices/pit.h"
-#include "threads/fixed_point.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include <debug.h>
+#include <fixed_point.h>
 #include <inttypes.h>
 #include <list.h>
 #include <round.h>
 #include <stdio.h>
-
-#include "threads/fixed_point.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 

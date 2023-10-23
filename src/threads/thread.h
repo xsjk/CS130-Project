@@ -1,8 +1,8 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
 
-#include "threads/fixed_point.h"
 #include <debug.h>
+#include <fixed_point.h>
 #include <list.h>
 #include <stdbool.h>
 #include <stdint.h>

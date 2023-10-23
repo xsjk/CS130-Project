@@ -1,5 +1,4 @@
 #include "threads/thread.h"
-#include "threads/fixed_point.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -8,6 +7,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include <debug.h>
+#include <fixed_point.h>
 #include <random.h>
 #include <stddef.h>
 #include <stdio.h>
