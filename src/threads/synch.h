@@ -24,7 +24,10 @@ struct lock
   struct semaphore semaphore; /* Binary semaphore controlling access. */
   struct list_elem elem;      /* List element. */
   int priority;               /* When donation is going to happen,
-                                 the donated priority is stored here. */
+                                 the donated priority is stored here.
+                                 It's used to restore the priority
+                                 when the lock is released. */
+  const char *name;           /* Name of the lock. (For debugging) */
 };
 
 void lock_init (struct lock *);
@@ -43,6 +46,9 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+bool lock_priority_greater (const struct list_elem *, const struct list_elem *,
+                            void *);
 
 /* Optimization barrier.
 

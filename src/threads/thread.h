@@ -98,6 +98,7 @@ struct thread
   struct list_elem elem; /* List element. */
 
   struct list locks;         /* List of locks held by thread */
+  struct thread *doner;      /* Thread that donated priority to this thread */
   struct lock *lock_waiting; /* Lock that thread is waiting for */
 
 #ifdef USERPROG

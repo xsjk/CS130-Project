@@ -420,7 +420,7 @@ thread_set_donation_priority (struct thread *t, int new_priority)
   t->priority = new_priority;
 
   if (list_elem_is_interior (&t->elem))
-    list_reorder (&t->elem, thread_priority_greater, NULL);
+    list_move_ordered (&t->elem, thread_priority_greater, NULL);
 }
 
 /* Returns the list witch holds the thread T->elem. */
@@ -601,6 +601,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   list_init (&t->locks);
+  t->doner = NULL;
   t->lock_waiting = NULL;
 
   t->nice = 0;
@@ -685,6 +686,8 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
+static struct thread *last_thread;
+
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
    running to some other state.  This function finds another
@@ -704,7 +707,10 @@ schedule (void)
   ASSERT (is_thread (next));
 
   if (cur != next)
-    prev = switch_threads (cur, next);
+    {
+      last_thread = cur;
+      prev = switch_threads (cur, next);
+    }
   thread_schedule_tail (prev);
 }
 

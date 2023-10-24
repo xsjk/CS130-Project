@@ -186,10 +186,11 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   lock->priority = -1;
+  lock->name = NULL;
   sema_init (&lock->semaphore, 1);
 }
 
-static bool
+bool
 lock_priority_greater (const struct list_elem *a, const struct list_elem *b,
                        void *aux UNUSED)
 {
@@ -197,7 +198,7 @@ lock_priority_greater (const struct list_elem *a, const struct list_elem *b,
   struct lock *lock_b = list_entry (b, struct lock, elem);
   ASSERT (lock_a->holder != NULL);
   ASSERT (lock_b->holder != NULL);
-  return lock_a->holder->priority > lock_b->holder->priority;
+  return lock_a->priority > lock_b->priority;
 }
 
 /* Donate current thread's priority to the thread holding the lock. */
@@ -207,20 +208,27 @@ donate (struct lock *lock)
   struct thread *cur = thread_current ();
 
   if (lock->holder == NULL)
-    lock->priority = -1; // no holder, no donation
+    {
+      lock->priority = cur->true_priority; // no holder, no donation
+    }
+
+  struct thread *last_holder = cur;
 
   for (struct lock *l = lock; l && l->holder; l = l->holder->lock_waiting)
     {
-      ASSERT (l->holder->priority < cur->priority);
-      // thread_set_donation_priority (l->holder, cur->priority);
+      ASSERT (l->holder->priority <= last_holder->priority);
 
       // donate current priority to the lock holder
-      l->holder->priority = cur->priority;
-
+      l->holder->doner = last_holder;
+      l->holder->priority = last_holder->priority;
       if (list_elem_is_interior (&l->holder->elem))
-        list_reorder (&l->holder->elem, thread_priority_greater, NULL);
+        list_move_ordered (&l->holder->elem, thread_priority_greater, NULL);
 
-      l->priority = cur->priority;
+      l->priority = last_holder->priority;
+      if (list_elem_is_interior (&l->elem))
+        list_move_ordered (&l->elem, lock_priority_greater, NULL);
+
+      last_holder = l->holder;
     }
 }
 
@@ -228,37 +236,84 @@ donate (struct lock *lock)
 static inline void
 undonate (struct lock *lock)
 {
-  if (lock->priority == -1)
-    return;
+  // if (lock->priority == -1)
+  //   return;
 
   struct thread *cur = thread_current ();
 
   if (cur->true_priority == cur->priority)
+    // priority was not donated
     return;
+
+  if (cur->doner == NULL)
+    // priority was not donated
+    return;
+
+  // donation exists
+
+  if (list_empty (&lock->semaphore.waiters))
+    // priority donation was not caused by this lock
+    return;
+
+  ASSERT (list_is_sorted (&lock->semaphore.waiters, thread_priority_greater,
+                          NULL));
+
+  struct thread *t = list_entry (list_front (&lock->semaphore.waiters),
+                                 struct thread, elem);
+
+  if (t != cur->doner)
+    // priority donation was not caused by this lock
+    return;
+
+  // priority donation was caused by this lock
 
   ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
 
-  int old_priority
-      = list_empty (&cur->locks)
-            ? cur->true_priority
-            : list_entry (list_front (&cur->locks), struct lock, elem)
-                  ->priority;
+  int old_priority;
+  if (list_empty (&cur->locks))
+    old_priority = cur->true_priority;
+  else
+    {
+      ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
+      struct lock *l
+          = list_entry (list_front (&cur->locks), struct lock, elem);
+      old_priority = l->priority;
+    }
 
   ASSERT (old_priority <= cur->priority);
 
   // thread_set_running_priority (old_priority);
   {
-
     cur->priority = old_priority;
 
     if (list_elem_is_interior (&cur->elem))
-      list_reorder (&cur->elem, thread_priority_greater, NULL);
+      list_move_ordered (&cur->elem, thread_priority_greater, NULL);
   }
+
+  ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
 
   cur->lock_waiting
       = list_empty (&cur->locks)
             ? NULL
             : list_entry (list_front (&cur->locks), struct lock, elem);
+
+  /// TODO: restore old doner if exists?
+  for (struct list_elem *it = list_begin (&cur->locks);
+       it != list_end (&cur->locks); it = list_next (it))
+    {
+      struct lock *l = list_entry (it, struct lock, elem);
+      ASSERT (list_is_sorted (&l->semaphore.waiters, thread_priority_greater,
+                              NULL));
+
+      for (struct list_elem *it = list_begin (&l->semaphore.waiters);
+           it != list_end (&l->semaphore.waiters); it = list_next (it))
+        {
+          struct thread *t = list_entry (it, struct thread, elem);
+          cur->doner = t;
+          return;
+        }
+    }
+  cur->doner = NULL;
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -277,8 +332,11 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   struct thread *cur = thread_current ();
+  ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
 
   donate (lock);
+
+  ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
 
   /* wait for semaphore */
   cur->lock_waiting = lock;
@@ -327,10 +385,9 @@ lock_release (struct lock *lock)
   /* return priority */
   list_remove (&lock->elem);
 
-  lock->holder = NULL;
-
-  /// TODO: deside whether to retrieve previous donations
   undonate (lock);
+
+  lock->holder = NULL;
 
   sema_up (&lock->semaphore);
 }

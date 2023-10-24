@@ -495,7 +495,7 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
    in the LIST are in their correct sorted positions.
    Runs in O(n) average case in the number of elements in LIST. */
 void
-list_reorder (struct list_elem *elem, list_less_func *less, void *aux)
+list_move_ordered (struct list_elem *elem, list_less_func *less, void *aux)
 {
   ASSERT (elem != NULL);
   ASSERT (less != NULL);

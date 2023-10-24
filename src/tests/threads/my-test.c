@@ -6,7 +6,7 @@
 static thread_func thread1;
 static thread_func thread2;
 
-struct lock l[5];
+static struct lock l[5];
 
 void
 my_test (void)
