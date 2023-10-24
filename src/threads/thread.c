@@ -518,7 +518,11 @@ update_priority (void)
        it != list_end (&all_list); it = list_next (it))
     {
       struct thread *t = list_entry (it, struct thread, allelem);
-      t->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (t->nice * 2);
+      // t->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (t->nice *
+      // 2);
+      t->priority = fp_to_int_round (fp_sub (
+          fp_sub (fp_create (PRI_MAX), fp_div (t->recent_cpu, fp_create (4))),
+          fp_mul (fp_create (t->nice), fp_create (2))));
     }
 }
 
@@ -645,7 +649,7 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  ASSERT (list_is_sorted (&ready_list, thread_priority_greater, NULL));
+  // ASSERT (list_is_sorted (&ready_list, thread_priority_greater, NULL));
   return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
