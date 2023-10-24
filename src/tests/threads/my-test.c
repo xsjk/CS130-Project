@@ -36,17 +36,18 @@ my_test (void)
 
   thread_create ("thread2", PRI_DEFAULT + 2, thread2, NULL);
   ASSERT (l[0].holder->priority == PRI_DEFAULT + 2);
-  // ASSERT (l[1].holder->priority == PRI_DEFAULT + 2); // this is a bug
+  ASSERT (l[1].holder->priority == PRI_DEFAULT + 1);
   ASSERT (l[2].holder->priority == PRI_DEFAULT + 2);
 
   lock_release (&l[4]);
-  msg ("thread2 should have just finished.");
-  msg ("Main thread should have priority %d.  Actual priority: %d.",
-       PRI_DEFAULT + 1, thread_get_priority ());
+  msg ("thread1 and thread2 should be finished.");
+  ASSERT (l[0].holder->priority == PRI_DEFAULT);
+
+  msg ("Main thread finished.");
 }
 
 static void
-thread1 (void *)
+thread1 (void *aux)
 {
   lock_acquire (&l[1]);
 
@@ -56,16 +57,15 @@ thread1 (void *)
   lock_acquire (&l[4]);
   msg ("thread1 acquired the lock");
 
-  ASSERT (l[0].holder->priority == PRI_DEFAULT + 1);
+  ASSERT (l[0].holder->priority == PRI_DEFAULT);
   ASSERT (l[1].holder->priority == PRI_DEFAULT + 1);
 
-  ASSERT (thread_get_priority () == PRI_DEFAULT + 1);
   lock_release (&l[4]);
   msg ("thread1 finished.");
 }
 
 static void
-thread2 (void *)
+thread2 (void *aux)
 {
   lock_acquire (&l[2]);
 
@@ -76,7 +76,7 @@ thread2 (void *)
   lock_acquire (&l[4]);
   msg ("thread2 acquired the lock");
 
-  ASSERT (l[0].holder->priority == PRI_DEFAULT + 1);
+  ASSERT (l[0].holder->priority == PRI_DEFAULT);
   ASSERT (l[1].holder->priority == PRI_DEFAULT + 1);
   ASSERT (l[2].holder->priority == PRI_DEFAULT + 2);
 
