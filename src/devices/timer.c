@@ -206,19 +206,19 @@ timer_interrupt (struct intr_frame *args UNUSED)
           cur->recent_cpu = fp_add (cur->recent_cpu, fp_create (1));
         }
 
-      /* every fourth clock tick */
-      // update priority for each thread
-      if (ticks % 4 == 0)
-        {
-          update_priority ();
-        }
-
       /* per second */
       // update load_avg & recent_cpu for each thread
       if (ticks % TIMER_FREQ == 0)
         {
           update_load_avg ();
           update_recent_cpu ();
+        }
+
+      /* every fourth clock tick */
+      // update priority for each thread
+      else if (ticks % 4 == 0)
+        {
+          update_priority ();
         }
     }
 
