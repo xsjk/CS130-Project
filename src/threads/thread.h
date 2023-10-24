@@ -168,4 +168,6 @@ void update_priority (void);
 
 bool is_idle_thread (struct thread *);
 
+void thread_list_display (struct list *list);
+
 #endif /* threads/thread.h */

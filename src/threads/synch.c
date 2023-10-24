@@ -60,12 +60,10 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema)
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   while (sema->value == 0)
     {
       struct thread *cur = thread_current ();
@@ -111,11 +109,9 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema)
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   sema->value++;
   if (!list_empty (&sema->waiters))
     {
@@ -205,6 +201,9 @@ lock_priority_greater (const struct list_elem *a, const struct list_elem *b,
 static inline void
 donate (struct lock *lock)
 {
+  ASSERT (lock != NULL);
+  ASSERT (intr_get_level () == INTR_OFF);
+
   struct thread *cur = thread_current ();
 
   if (lock->holder == NULL)
@@ -236,6 +235,8 @@ donate (struct lock *lock)
 static inline void
 undonate (struct lock *lock)
 {
+  ASSERT (lock != NULL);
+  ASSERT (intr_get_level () == INTR_OFF);
   // if (lock->priority == -1)
   //   return;
 
@@ -292,12 +293,13 @@ undonate (struct lock *lock)
 
   ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
 
+  // restore old cur->lock_waiting
   cur->lock_waiting
       = list_empty (&cur->locks)
             ? NULL
             : list_entry (list_front (&cur->locks), struct lock, elem);
 
-  /// TODO: restore old doner if exists?
+  // restore old doner if exists?
   for (struct list_elem *it = list_begin (&cur->locks);
        it != list_end (&cur->locks); it = list_next (it))
     {
@@ -331,14 +333,12 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread *cur = thread_current ();
-  ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
+  enum intr_level old_level = intr_disable ();
 
   donate (lock);
 
-  ASSERT (list_is_sorted (&cur->locks, lock_priority_greater, NULL));
-
   /* wait for semaphore */
+  struct thread *cur = thread_current ();
   cur->lock_waiting = lock;
   sema_down (&lock->semaphore);
   cur->lock_waiting = NULL;
@@ -346,6 +346,8 @@ lock_acquire (struct lock *lock)
   /* lock already acquired */
   lock->holder = cur;
   list_insert_ordered (&cur->locks, &lock->elem, lock_priority_greater, NULL);
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -379,10 +381,8 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  ASSERT (
-      list_is_sorted (&thread_current ()->locks, lock_priority_greater, NULL));
+  enum intr_level old_level = intr_disable ();
 
-  /* return priority */
   list_remove (&lock->elem);
 
   undonate (lock);
@@ -390,6 +390,8 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
 
   sema_up (&lock->semaphore);
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -462,8 +464,12 @@ cond_wait (struct condition *cond, struct lock *lock)
 
   sema_init (&waiter.semaphore, 0);
   waiter.priority = thread_current ()->priority;
+
+  enum intr_level old_level = intr_disable ();
   list_insert_ordered (&cond->waiters, &waiter.elem, sema_priority_greater,
                        NULL);
+  intr_set_level (old_level);
+
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -484,6 +490,8 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable ();
+
   if (!list_empty (&cond->waiters))
     {
       ASSERT (list_is_sorted (&cond->waiters, sema_priority_greater, NULL));
@@ -492,6 +500,8 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
                             struct semaphore_elem, elem)
                     ->semaphore);
     }
+
+  intr_set_level (old_level);
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

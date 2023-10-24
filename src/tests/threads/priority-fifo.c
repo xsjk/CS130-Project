@@ -92,7 +92,6 @@ simple_thread_func (void *data_)
   for (i = 0; i < ITER_CNT; i++)
     {
       lock_acquire (data->lock);
-      printf ("%s\n", thread_current ()->name);
       *(*data->op)++ = data->id;
       lock_release (data->lock);
       thread_yield ();

@@ -18,11 +18,16 @@ struct locks
   struct lock e;
 };
 
-struct locks locks_holder;
+static struct thread *t[6];
+static struct thread *tmain, *t32, *t33, *t34, *t35;
+
+static struct locks locks_holder;
 
 void
 my_test_big (void)
 {
+  tmain = thread_current ();
+
   struct locks *locks = &locks_holder;
 
   /* This test does not work with the MLFQS. */
@@ -38,41 +43,56 @@ my_test_big (void)
 
   lock_acquire (&locks->e); // no block
 
-  ASSERT (thread_get_priority () == 31);
+  ASSERT (tmain->priority == 31);
 
   thread_create ("thread32", 32, thread32, locks);
 
+  ASSERT (tmain->priority == 32);
+  ASSERT (t32->priority == 32);
+
   lock_release (&locks->e); // continue thread32
+
+  ASSERT (tmain->priority == 31);
+
   msg ("This should be the last line before finishing this test.");
 }
 
 static void
 thread32 (void *aux)
 {
-  ASSERT (thread_get_priority () == 32);
+  t32 = thread_current ();
+
+  ASSERT (t32->priority == 32);
 
   struct locks *locks = aux;
 
   lock_acquire (&locks->e); // block by main, donate 32 to main
   msg ("thread32: got lock e");
+
+  ASSERT (tmain->priority == 31);
+  ASSERT (t32->priority == 32);
+
   lock_release (&locks->e);
 
   lock_acquire (&locks->c); // no block
 
   thread_create ("thread33", 33, thread33, locks);
-  ASSERT (thread_get_priority () == 33); // donated by thread33
+
+  ASSERT (tmain->priority == 31);
+  ASSERT (t32->priority == 33);
+  ASSERT (t33->priority == 33);
 
   lock_acquire (&locks->a); // no block
   msg ("thread32: got lock a");
 
   thread_create ("thread34", 34, thread34, locks);
-  ASSERT (thread_get_priority () == 34); // donated by thread34
+  ASSERT (t32->priority == 34); // donated by thread34
 
   lock_acquire (&locks->b); // no block
   msg ("thread32: got lock b");
 
   thread_create ("thread35", 35, thread35, locks);
-  ASSERT (thread_get_priority () == 35); // donated by thread35
+  ASSERT (t32->priority == 35); // donated by thread35
 
   lock_release (&locks->a); // do not continue thread34
   lock_release (&locks->b); // continue thread35
@@ -84,7 +104,9 @@ thread32 (void *aux)
 static void
 thread33 (void *aux)
 {
-  ASSERT (thread_get_priority () == 33);
+  t33 = thread_current ();
+
+  ASSERT (t33->priority == 33);
 
   struct locks *locks = aux;
 
@@ -97,7 +119,9 @@ thread33 (void *aux)
 static void
 thread34 (void *aux)
 {
-  ASSERT (thread_get_priority () == 34);
+  t34 = thread_current ();
+
+  ASSERT (t34->priority == 34);
 
   struct locks *locks = aux;
 
@@ -110,7 +134,9 @@ thread34 (void *aux)
 static void
 thread35 (void *aux)
 {
-  ASSERT (thread_get_priority () == 35);
+  t35 = thread_current ();
+
+  ASSERT (t35->priority == 35);
 
   struct locks *locks = aux;
 

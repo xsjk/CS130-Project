@@ -107,11 +107,12 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
+  intr_disable ();
+
   thread_current ()->wakeup_time = start + ticks;
   list_insert_ordered (&sleeping_list, &thread_current ()->sleepelem,
                        wakeup_time_less, NULL);
 
-  intr_disable ();
   thread_block ();
   intr_enable ();
 }
@@ -235,9 +236,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
           thread_unblock (t);
         }
       else
-        {
-          break;
-        }
+        break;
     }
 }
 

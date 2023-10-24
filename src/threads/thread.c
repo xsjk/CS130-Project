@@ -242,15 +242,16 @@ thread_priority_greater (const struct list_elem *a, const struct list_elem *b,
 void
 thread_unblock (struct thread *t)
 {
-  enum intr_level old_level;
   struct thread *cur = thread_current ();
 
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_BLOCKED);
 
-  old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
+
   list_insert_ordered (&ready_list, &t->elem, thread_priority_greater, NULL);
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
 
   if (!intr_context () && cur != idle_thread && cur->priority < t->priority)
@@ -317,11 +318,10 @@ void
 thread_yield (void)
 {
   struct thread *cur = thread_current ();
-  enum intr_level old_level;
 
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   if (cur != idle_thread)
     list_insert_ordered (&ready_list, &cur->elem, thread_priority_greater,
                          NULL);
@@ -358,11 +358,15 @@ thread_set_priority (int new_priority)
 
   bool donated = thread_is_donated ();
 
+  enum intr_level old_level = intr_disable ();
+
   cur->true_priority = new_priority;
 
   if (!donated)
     /// do not set running priority if donated
     thread_set_running_priority (new_priority);
+
+  intr_set_level (old_level);
 }
 
 /* Return the name of current thread */
@@ -417,10 +421,14 @@ thread_set_donation_priority (struct thread *t, int new_priority)
 {
   ASSERT (t->priority < new_priority);
 
+  enum intr_level old_level = intr_disable ();
+
   t->priority = new_priority;
 
   if (list_elem_is_interior (&t->elem))
     list_move_ordered (&t->elem, thread_priority_greater, NULL);
+
+  intr_set_level (old_level);
 }
 
 /* Returns the list witch holds the thread T->elem. */
@@ -586,8 +594,6 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  enum intr_level old_level;
-
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -608,7 +614,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = fp_create (0);
   load_avg = fp_create (0);
 
-  old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   list_insert_ordered (&all_list, &t->allelem, thread_priority_greater, NULL);
   intr_set_level (old_level);
 }
@@ -736,4 +742,21 @@ bool
 is_idle_thread (struct thread *cur)
 {
   return cur == idle_thread;
+}
+
+void
+thread_list_display (struct list *list)
+{
+  ASSERT (list != NULL);
+
+  printf ("[");
+  for (struct list_elem *it = list_begin (list); it != list_end (list);
+       it = list_next (it))
+    {
+      struct thread *t = list_entry (it, struct thread, elem);
+      printf ("%s(%d)", t->name, t->priority);
+      if (it != list_end (list))
+        printf (", ");
+    }
+  printf ("]\n");
 }
