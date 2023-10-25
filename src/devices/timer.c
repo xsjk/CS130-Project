@@ -216,7 +216,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
       /* every fourth clock tick */
       // update priority for each thread
-      else if (ticks % 4 == 0)
+      if (ticks % 4 == 0)
         {
           update_priority ();
         }

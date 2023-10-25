@@ -25,14 +25,14 @@ fixed_point load_avg;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-static struct list all_list;
+struct list all_list;
 
 /* Idle thread. */
-static struct thread *idle_thread;
+struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
@@ -112,6 +112,9 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  /* initialize load_avg */
+  load_avg = fp_create (0);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -352,9 +355,6 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
-  if (thread_mlfqs)
-    return;
-
   struct thread *cur = thread_current ();
 
   ASSERT (cur->status == THREAD_RUNNING)
@@ -448,7 +448,16 @@ thread_set_nice (int nice UNUSED)
   /* Not yet implemented. */
   struct thread *cur = thread_current ();
   cur->nice = nice;
-  cur->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (nice * 2);
+  // cur->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (nice * 2);
+  cur->priority = fp_to_int_down (fp_sub (
+      fp_sub (fp_create (PRI_MAX), fp_div (cur->recent_cpu, fp_create (4))),
+      fp_mul (fp_create (nice), fp_create (2))));
+
+  if (list_elem_is_interior (&cur->elem))
+    list_move_ordered (&cur->elem, thread_priority_greater, NULL);
+
+  // If the running thread no longer has the highest priority, yields.
+  thread_yield ();
 }
 
 /* Returns the current thread's nice value. */
@@ -466,7 +475,7 @@ thread_get_load_avg (void)
 {
   /* Not yet implemented. */
   // return round(100 * load_avg);
-  return fp_to_int_round (fp_mul (fp_create (100), load_avg));
+  return fp_to_int_nearest (fp_mul (fp_create (100), load_avg));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -476,24 +485,23 @@ thread_get_recent_cpu (void)
   /* Not yet implemented. */
   struct thread *cur = thread_current ();
   // return round(100 * cur->recent_cpu);
-  return fp_to_int_round (fp_mul (cur->recent_cpu, fp_create (100)));
+  return fp_to_int_nearest (fp_mul (cur->recent_cpu, fp_create (100)));
 }
 
 /*update*/
-void
+static void
 update_load_avg (void)
 {
   // load_avg = (59 / 60) * load_avg + (1 / 60) * (list_size(&ready_list) +
-  // (thread_current() != idle_thread));
+  // (thread_current () != idle_thread))
   load_avg
       = fp_add (fp_mul (fp_div (fp_create (59), fp_create (60)), load_avg),
                 fp_mul (fp_div (fp_create (1), fp_create (60)),
                         fp_create (list_size (&ready_list)
                                    + (thread_current () != idle_thread))));
-  int avg_int = fp_to_int_round (load_avg);
 }
 
-void
+static void
 update_recent_cpu (void)
 {
   for (struct list_elem *it = list_begin (&all_list);
@@ -502,16 +510,17 @@ update_recent_cpu (void)
       struct thread *t = list_entry (it, struct thread, allelem);
       // t->recent_cpu = ((2 * load_avg) / (2 * load_avg + 1) * t->recent_cpu +
       // t->nice);
-      t->recent_cpu
-          = fp_add (fp_mul (fp_div (fp_mul (fp_create (2), load_avg),
-                                    fp_add (fp_mul (fp_create (2), load_avg),
-                                            fp_create (1))),
-                            t->recent_cpu),
-                    fp_create (t->nice));
+      if (t != idle_thread)
+        t->recent_cpu
+            = fp_add (fp_mul (fp_div (fp_mul (fp_create (2), load_avg),
+                                      fp_add (fp_mul (fp_create (2), load_avg),
+                                              fp_create (1))),
+                              t->recent_cpu),
+                      fp_create (t->nice));
     }
 }
 
-void
+static void
 update_priority (void)
 {
   for (struct list_elem *it = list_begin (&all_list);
@@ -520,10 +529,17 @@ update_priority (void)
       struct thread *t = list_entry (it, struct thread, allelem);
       // t->priority = PRI_MAX - (thread_get_recent_cpu () / 4) - (t->nice *
       // 2);
-      t->priority = fp_to_int_round (fp_sub (
-          fp_sub (fp_create (PRI_MAX), fp_div (t->recent_cpu, fp_create (4))),
-          fp_mul (fp_create (t->nice), fp_create (2))));
+      if (t != idle_thread)
+        {
+          t->priority = fp_to_int_down (
+              fp_sub (fp_sub (fp_create (PRI_MAX),
+                              fp_div (t->recent_cpu, fp_create (4))),
+                      fp_mul (fp_create (t->nice), fp_create (2))));
+
+          // ASSERT (PRI_MIN <= t->priority && t->priority <= PRI_MAX);
+        }
     }
+  list_sort (&ready_list, thread_priority_greater, NULL);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -619,7 +635,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->nice = 0;
   t->recent_cpu = fp_create (0);
-  load_avg = fp_create (0);
 
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&all_list, &t->allelem, thread_priority_greater, NULL);
@@ -649,7 +664,7 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  // ASSERT (list_is_sorted (&ready_list, thread_priority_greater, NULL));
+  ASSERT (list_is_sorted (&ready_list, thread_priority_greater, NULL));
   return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
