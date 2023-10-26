@@ -346,9 +346,8 @@ lock_acquire (struct lock *lock)
 
       /* lock already acquired */
       lock->holder = cur;
-      if (!thread_mlfqs)
-        list_insert_ordered (&cur->locks, &lock->elem, lock_priority_greater,
-                             NULL);
+      list_insert_ordered (&cur->locks, &lock->elem, lock_priority_greater,
+                           NULL);
 
       intr_set_level (old_level);
     }
@@ -373,9 +372,37 @@ lock_try_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
-  success = sema_try_down (&lock->semaphore);
-  if (success)
-    lock->holder = thread_current ();
+  struct thread *cur = thread_current ();
+
+  if (!thread_mlfqs)
+    {
+      enum intr_level old_level = intr_disable ();
+      donate (lock);
+
+      /* wait for semaphore */
+      cur->lock_waiting = lock;
+      success = sema_try_down (&lock->semaphore);
+      cur->lock_waiting = NULL;
+
+      if (success)
+        {
+          /* lock already acquired */
+          lock->holder = cur;
+          list_insert_ordered (&cur->locks, &lock->elem, lock_priority_greater,
+                               NULL);
+        }
+
+      intr_set_level (old_level);
+    }
+  else
+    {
+      sema_down (&lock->semaphore);
+      success = sema_try_down (&lock->semaphore);
+
+      if (success)
+        lock->holder = cur;
+    }
+
   return success;
 }
 
@@ -503,7 +530,6 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   if (!list_empty (&cond->waiters))
     {
       ASSERT (list_is_sorted (&cond->waiters, sema_priority_greater, NULL));
-      struct list_elem *e = list_front (&cond->waiters);
       sema_up (&list_entry (list_pop_front (&cond->waiters),
                             struct semaphore_elem, elem)
                     ->semaphore);
