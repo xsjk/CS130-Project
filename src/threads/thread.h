@@ -160,11 +160,6 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-extern fixed_point load_avg;
-extern struct list ready_list;
-extern struct list all_list;
-extern struct thread *idle_thread;
-
 void update_load_avg (void);
 void update_recent_cpu (void);
 void update_priority (void);

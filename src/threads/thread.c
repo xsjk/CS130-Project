@@ -16,7 +16,7 @@
 #include "userprog/process.h"
 #endif
 
-fixed_point load_avg;
+static fixed_point load_avg;
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -25,14 +25,14 @@ fixed_point load_avg;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-struct list ready_list;
+static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-struct list all_list;
+static struct list all_list;
 
 /* Idle thread. */
-struct thread *idle_thread;
+static struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;

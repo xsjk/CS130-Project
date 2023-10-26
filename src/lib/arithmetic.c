@@ -163,6 +163,8 @@ extern "C"
   long long __moddi3 (long long n, long long d);
   unsigned long long __udivdi3 (unsigned long long n, unsigned long long d);
   unsigned long long __umoddi3 (unsigned long long n, unsigned long long d);
+  unsigned long long __udivmoddi4 (unsigned long long n, unsigned long long d,
+                                   unsigned long long *r);
 
 #ifdef __cplusplus
 }
@@ -194,4 +196,12 @@ unsigned long long
 __umoddi3 (unsigned long long n, unsigned long long d)
 {
   return umod64 (n, d);
+}
+
+unsigned long long
+__udivmoddi4 (unsigned long long n, unsigned long long d,
+              unsigned long long *r)
+{
+  *r = umod64 (n, d);
+  return udiv64 (n, d);
 }

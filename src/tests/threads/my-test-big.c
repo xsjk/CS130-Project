@@ -18,7 +18,6 @@ struct locks
   struct lock e;
 };
 
-static struct thread *t[6];
 static struct thread *tmain, *t32, *t33, *t34, *t35;
 
 static struct locks locks_holder;
@@ -64,7 +63,7 @@ thread32 (void *aux)
 
   ASSERT (t32->priority == 32);
 
-  struct locks *locks = aux;
+  struct locks *locks = (struct locks *)aux;
 
   lock_acquire (&locks->e); // block by main, donate 32 to main
   msg ("thread32: got lock e");
@@ -108,7 +107,7 @@ thread33 (void *aux)
 
   ASSERT (t33->priority == 33);
 
-  struct locks *locks = aux;
+  struct locks *locks = (struct locks *)aux;
 
   lock_acquire (&locks->c); // block by thread32,  donate 33 to thread32
   msg ("thread33: got lock c");
@@ -123,7 +122,7 @@ thread34 (void *aux)
 
   ASSERT (t34->priority == 34);
 
-  struct locks *locks = aux;
+  struct locks *locks = (struct locks *)aux;
 
   lock_acquire (&locks->a); // block by thread32,  donate 34 to thread32
   msg ("thread34: got lock a");
@@ -138,7 +137,7 @@ thread35 (void *aux)
 
   ASSERT (t35->priority == 35);
 
-  struct locks *locks = aux;
+  struct locks *locks = (struct locks *)aux;
 
   lock_acquire (&locks->b); // block by thread32, donate 35 to thread32
   msg ("thread35: got lock b");

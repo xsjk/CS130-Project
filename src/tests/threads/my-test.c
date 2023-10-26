@@ -47,7 +47,7 @@ my_test (void)
 }
 
 static void
-thread1 (void *aux)
+thread1 (void *aux UNUSED)
 {
   lock_acquire (&l[1]);
 
@@ -65,7 +65,7 @@ thread1 (void *aux)
 }
 
 static void
-thread2 (void *aux)
+thread2 (void *aux UNUSED)
 {
   lock_acquire (&l[2]);
 
