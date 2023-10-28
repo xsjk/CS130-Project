@@ -65,8 +65,7 @@ timer_sleep():
 > > A4: How are race conditions avoided when multiple threads call
 > > timer_sleep() simultaneously?
 
-  ?: multiple threads cannot really call timer_sleep() simultaneously, since interrupt is disabled during the call.
-  ?: intr_disable() & intr_enable() guarantee that the operations to sleeping_list won't be interrupt. Another call to timer_sleep() can't access critical section until the current call enables interrupt.
+  intr_disable() & intr_enable() guarantee that the operations to sleeping_list won't be interrupt. Another call to timer_sleep() can't access critical section until the current call enables interrupt.
 
 > > A5: How are race conditions avoided when a timer interrupt occurs
 > > during a call to timer_sleep()?
@@ -121,20 +120,20 @@ timer_sleep():
 
   Nested donation, the case in priority-donate-nest.c:
   1. Initializtion:
-    lock a: holder(NULL), priority: -1
-    lock b: holder(NULL), priority: -1
-    low thread: priority: 31, true_priority: 31, lock_waiting: NULL, locks: empty
+    lock a: holder(NULL), priority(-1)
+    lock b: holder(NULL), priority(-1)
+    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks([])
 
 
   2. low thread tries to acquire lock a:
-    lock a: holder(low), priority: 31
-    lock b: holder(NULL), priority: -1
-    low thread: priority: 31, true_priority: 31, lock_waiting: a, locks: ([a]), doner: NULL
+    lock a: holder(low), priority(31)
+    lock b: holder(NULL), priority(-1)
+    low thread: priority(31), true_priority(31), lock_waiting(a), locks([a]), doner: NULL
 
 
-  3. create medium thread with priotity 32, with func lock_acquire(b&a):
+  3. create medium thread with priotity 32, with func lock_acquire(b) then lock_acquire(a):
     lock a: holder(low), priority(32)
-    lock b: holder(medium), doner: NULL, priority(32)
+    lock b: holder(medium), priority(32)
     low thread: priority(32), true_priority(31), lock_waiting(NULL), locks([a]), doner: medium
     medium thread: priority(32), true_priority(32), lock_waiting(a), locks([b]), doner: NULL
 
@@ -143,37 +142,37 @@ timer_sleep():
     lock b: holder(medium), doner: high, priority(33)
     low thread: priority(33), true_priority(31), lock_waiting(NULL), locks([a]), doner: medium
     medium thread: priority(33), true_priority(32), lock_waiting(a), locks([b]), doner: high
-    high thread: priority(33), true_priority(33), lock_waiting(b), locks(empty), doner: NULL
+    high thread: priority(33), true_priority(33), lock_waiting(b), locks([]), doner: NULL
 
 
   5. low thread release lock a, then medium gets a:
     lock a: holder(medium), priority(32)
     lock b: holder(medium), priority(33)
-    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks(empty), doner: NULL
-    medium thread: priority(33), true_priority(32), lock_waiting(NULL), locks([a,b]), doner: high
-    high thread: priority(33), true_priority(33), lock_waiting(b), locks(empty), doner: NULL
+    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks([]), doner: NULL
+    medium thread: priority(33), true_priority(32), lock_waiting(NULL), locks([b,a]), doner: high
+    high thread: priority(33), true_priority(33), lock_waiting(b), locks([]), doner: NULL
 
 
   6. medium thread release a & b, then high thread gets b:
     lock a: holder(NULL), priority(32) // new thread acquire the lock, update priority
     lock b: holder(high), priority(33)
-    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks(empty), doner: NULL
-    medium thread: priority(32), true_priority(32), lock_waiting(NULL), locks(empty), doner: NULL
+    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks([]), doner: NULL
+    medium thread: priority(32), true_priority(32), lock_waiting(NULL), locks([]), doner: NULL
     high thread: priority(33), true_priority(33), lock_waiting(NULL), locks([b]), doner: NULL
 
   7. high thread release b, all threads finish:
     lock a: holder(NULL), priority(32)
     lock b: holder(NULL), priority(33)
-    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks(empty), doner: NULL
-    medium thread: priority(32), true_priority(32), lock_waiting(NULL), locks(empty), doner: NULL
-    high thread: priority(33), true_priority(33), lock_waiting(NULL), locks(empty), doner: NULL
+    low thread: priority(31), true_priority(31), lock_waiting(NULL), locks([]), doner: NULL
+    medium thread: priority(32), true_priority(32), lock_waiting(NULL), locks([]), doner: NULL
+    high thread: priority(33), true_priority(33), lock_waiting(NULL), locks([]), doner: NULL
 
 ---- ALGORITHMS ----
 
 > > B3: How do you ensure that the highest priority thread waiting for
 > > a lock, semaphore, or condition variable wakes up first?
 
-  We use list_insert_ordered() to insert the thread into the waiters list of semaphore/condition variable, ordered by threads' priority.
+  We use list_insert_ordered_back() to insert the thread into the waiters list of semaphore/condition variable, ordered by threads' priority.
 
 > > B4: Describe the sequence of events when a call to lock_acquire()
 > > causes a priority donation. How is nested donation handled?
@@ -217,7 +216,9 @@ timer_sleep():
 > > how your implementation avoids it. Can you use a lock to avoid
 > > this race?
 
-  ///TODO
+  When two different threads try to modify the same thread's priority.
+  We use intr_disable() in thread_set_priority() to avoid it. 
+  e.g. when A is interrupted by thread B, and B is acquiring a lock causing donation which sets thread A's priority while thread A itself is trying to set its priority calling thread_set_priority ().
 
 ---- RATIONALE ----
 
@@ -280,15 +281,15 @@ ticks A B C A B C to run
 > > them? Does this match the behavior of your scheduler?
 
   Yes. 
-  If there are multiple threads with the same highest priority, the choice of thread depends on list_insert_ordered() function.
+  If there are multiple threads with the same highest priority, the choice of thread depends on list_insert_ordered_back() function.
   The rule is that if there are multiple threads with the same highest priority, choose the running one as the next. 
   This matches the behavior of our scheduler.
 
 > > C4: How is the way you divided the cost of scheduling between code
 > > inside and outside interrupt context likely to affect performance?
 
-  If we do all the work in interrupt context, the interrupt handler will take a long time to finish, which will affect the performance of the system.
-  Else, the interrupt handler will finish quickly, but the system will be also affected since thread switching requires saving and restoring the info of the current thread.
+  If we do all the work in interrupt context, the interrupt handler will wait a long time to switch, which will affect the performance of the system.
+  Else, the interrupt handler will switch quickly, but the system will be also affected since thread switching requires saving and restoring the info of the current thread.
 
 ---- RATIONALE ----
 
@@ -300,7 +301,7 @@ ticks A B C A B C to run
   Advantages:
     1. we calculate the coeffiecent of rencent_cpu first, then multiplying. This can avoid overflow.
     2. we defined list_move_ordered() function to move one thread to the right position in ready_list. 
-      When calling thread_set_nice(), we only need to update current thread's priority, then list_move_ordered() is more efficient than list_insert_ordered().
+      When calling thread_set_nice(), we only need to update current thread's priority, then list_move_ordered() is more efficient than list_insert_ordered_back().
 
   Disadvantages:
     1. load_avg is defined as a global variable. 
