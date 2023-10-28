@@ -537,6 +537,7 @@ update_priority (void)
                       fp_mul (fp_create (t->nice), fp_create (2))));
 
           // ASSERT (PRI_MIN <= t->priority && t->priority <= PRI_MAX);
+          t->priority = t->priority < PRI_MIN ? PRI_MIN : t->priority;
         }
     }
   list_sort (&ready_list, thread_priority_greater, NULL);
