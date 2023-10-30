@@ -245,12 +245,12 @@ struct thread {
   // add
   int nice; /* how how "nice" the thread should be to other threads */
   // add
-  fixed_point recent_cpu; /* how much CPU time each process has received "recently" */
+  float recent_cpu; /* how much CPU time each process has received "recently" */
 }
 
 In thread.c:
   // add 
-  fixed_point load_avg; /* system load average */
+  float load_avg; /* system load average */
 
 
 ---- ALGORITHMS ----
@@ -317,12 +317,8 @@ ticks A B C A B C to run
 > > type and/or a set of functions or macros to manipulate fixed-point
 > > numbers, why did you do so? If not, why not?
 
-  
-  Yes, we create an abstraction layer for fixed-point math.
-  We create fixed_point.h, using inline function to define the fixed-point number representation and the operations on it.
-  Advantages: Avoid multiple compilation problems.
-              Inline function is more efficient than function call, especially for fixed_point math, which is small and frequently used.
-              Optimize timer_interrupt() performance.
+  Use built-in float instead of fixed-point math, since float is more accurate.
+  Although float was disabled in default, we can enable the FPU in start.S, and compile PintOS with -msoft-float to use float.
               
 
                SURVEY QUESTIONS

@@ -4,7 +4,6 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include <debug.h>
-#include <fixed_point.h>
 #include <inttypes.h>
 #include <list.h>
 #include <round.h>
@@ -202,8 +201,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
       // update recent cpu, unless the idle thread is running
       if (!is_idle_thread (cur))
         {
-          // cur->recent_cpu++;
-          cur->recent_cpu = fp_add (cur->recent_cpu, fp_create (1));
+          cur->recent_cpu++;
         }
 
       /* per second */

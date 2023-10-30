@@ -2,7 +2,6 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
-#include <fixed_point.h>
 #include <list.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -111,7 +110,7 @@ struct thread
 
   int64_t wakeup_time; /* Time to wake up */
   int nice;
-  fixed_point recent_cpu;
+  float recent_cpu;
 };
 
 /* If false (default), use round-robin scheduler.
