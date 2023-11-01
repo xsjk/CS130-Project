@@ -79,13 +79,13 @@ enum seg_granularity
    DPL==0 means that only the kernel can use the segment.  See
    [IA32-v3a] 4.5 "Privilege Levels" for further discussion. */
 static uint64_t
-make_seg_desc (uint32_t base, uint32_t limit, enum seg_class class, int type,
+make_seg_desc (uint32_t base, uint32_t limit, enum seg_class cls, int type,
                int dpl, enum seg_granularity granularity)
 {
   uint32_t e0, e1;
 
   ASSERT (limit <= 0xfffff);
-  ASSERT (class == CLS_SYSTEM || class == CLS_CODE_DATA);
+  ASSERT (cls == CLS_SYSTEM || cls == CLS_CODE_DATA);
   ASSERT (type >= 0 && type <= 15);
   ASSERT (dpl >= 0 && dpl <= 3);
   ASSERT (granularity == GRAN_BYTE || granularity == GRAN_PAGE);
@@ -95,7 +95,7 @@ make_seg_desc (uint32_t base, uint32_t limit, enum seg_class class, int type,
 
   e1 = (((base >> 16) & 0xff)   /* Base 23:16. */
         | (type << 8)           /* Segment type. */
-        | (class << 12)         /* 0=system, 1=code/data. */
+        | (cls << 12)         /* 0=system, 1=code/data. */
         | (dpl << 13)           /* Descriptor privilege. */
         | (1 << 15)             /* Present. */
         | (limit & 0xf0000)     /* Limit 16:19. */

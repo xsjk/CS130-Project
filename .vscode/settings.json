@@ -9,7 +9,7 @@
     "*.ck": "perl",
     "*.h": "c"
   },
-  "editor.formatOnSave": false,
+  "editor.formatOnSave": true,
   "C_Cpp.default.systemIncludePath": [
     "${workspaceFolder}/src/",
     "${workspaceFolder}/src/lib/kernel",
