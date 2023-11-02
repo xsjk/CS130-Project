@@ -94,8 +94,8 @@ static bool
 wakeup_time_less (const struct list_elem *a, const struct list_elem *b,
                   void *aux UNUSED)
 {
-  return list_entry (a, struct thread, sleepelem)->wakeup_time
-         < list_entry (b, struct thread, sleepelem)->wakeup_time;
+  return list_entry (a, struct thread, elem)->wakeup_time
+         < list_entry (b, struct thread, elem)->wakeup_time;
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
@@ -110,7 +110,7 @@ timer_sleep (int64_t ticks)
   intr_disable ();
 
   thread_current ()->wakeup_time = start + ticks;
-  list_insert_ordered (&sleeping_list, &thread_current ()->sleepelem,
+  list_insert_ordered (&sleeping_list, &thread_current ()->elem,
                        wakeup_time_less, NULL);
 
   thread_block ();
@@ -229,7 +229,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   e = list_begin (&sleeping_list);
   while (!list_empty (&sleeping_list))
     {
-      t = list_entry (e, struct thread, sleepelem);
+      t = list_entry (e, struct thread, elem);
       if (t->wakeup_time <= ticks)
         {
           e = list_remove (e);

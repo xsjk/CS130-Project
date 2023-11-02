@@ -31,8 +31,6 @@ Yichun Bai <baiych@shanghaitech.edu.cn>
 
 struct thread{
   // add
-  struct list_elem sleepelem; /* List element for sleep threads list. */
-  // add
   int64_t wakeup_time; /* Time to wake up */
 }
 
