@@ -66,9 +66,12 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  char *arg_name, save_ptr;
+  char *arg_name, *save_ptr;
   char *argv[64], *arg_address[64];
   int argc = 0, addr_offset, word_align_num;
+
+  arg_name = strtok_r (file_name_, " ", &save_ptr);
+  file_name = arg_name;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -80,8 +83,6 @@ start_process (void *file_name_)
   /* Argument Passing*/
   if (success)
     {
-      arg_name = strtok_r (file_name_, " ", &save_ptr);
-      file_name = arg_name;
       // get all arguments
       while (arg_name != NULL && argc < 64)
         {
