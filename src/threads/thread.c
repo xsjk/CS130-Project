@@ -270,6 +270,7 @@ thread_tid(void) {
 void
 thread_exit(void) {
     ASSERT(!intr_context());
+    sema_up(&thread_current()->wait_sema);
 
 #ifdef USERPROG
     process_exit();
@@ -439,8 +440,10 @@ init_thread(struct thread* t, const char* name, int priority) {
     t->magic = THREAD_MAGIC;
 
     /* project 2 */
-    t->exit_status = 0;
+    t->exit_status = -1;
+    t->parent = t == initial_thread ? NULL : thread_current();
     list_init(&t->child_list);
+    sema_init(&t->wait_sema, 0);
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);

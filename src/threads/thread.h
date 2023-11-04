@@ -98,6 +98,7 @@ struct thread {
 
     /* Project 2 */
     int exit_status;                    /* Exit status of the thread. */
+    struct thread* parent;              /* Parent thread. */
     struct list child_list;             /* List of child processes. */
     struct list_elem childelem;        /* List element for child_list. */
     struct semaphore wait_sema;         /* Semaphore for waiting. */
