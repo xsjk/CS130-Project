@@ -20,11 +20,8 @@
    Returns the byte value if successful, -1 if a segfault
    occurred. */
 static int
-get_user (const uint8_t __user *uaddr)
+try_load (const uint8_t __user *uaddr)
 {
-  if (uaddr >= PHYS_BASE)
-    return -1;
-
   int result;
   asm ("movl $1f, %0\n\t"
        "movzbl %1, %0\n"
@@ -38,7 +35,7 @@ get_user (const uint8_t __user *uaddr)
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
 static bool
-put_user (uint8_t __user *udst, uint8_t byte)
+try_store (uint8_t __user *udst, uint8_t byte)
 {
   int error_code;
   asm ("movl $1f, %0\n\t"
@@ -52,9 +49,12 @@ put_user (uint8_t __user *udst, uint8_t byte)
 static bool
 copy_from_user (uint8_t *dst, const uint8_t __user *src, size_t size)
 {
+  if (src + size >= PHYS_BASE)
+    return false;
+
   for (size_t i = 0; i < size; i++)
     {
-      int byte = get_user (src + i);
+      int byte = try_load (src + i);
       if (byte == -1)
         return false;
       dst[i] = byte;
@@ -65,8 +65,11 @@ copy_from_user (uint8_t *dst, const uint8_t __user *src, size_t size)
 static bool
 copy_to_user (uint8_t __user *dst, const uint8_t *src, size_t size)
 {
+  if (dst + size >= PHYS_BASE)
+    return false;
+
   for (size_t i = 0; i < size; i++)
-    if (!put_user (dst + i, src[i]))
+    if (!try_store (dst + i, src[i]))
       return false;
   return true;
 }
@@ -116,14 +119,22 @@ sys_exit (int status)
 static void
 access_validate (void __user *uaddr, size_t size)
 {
-  if (get_user (uaddr) == -1 || get_user (uaddr + size - 1) == -1)
+  if (try_load (uaddr) == -1 || try_load (uaddr + size - 1) == -1)
     sys_exit (-1);
+}
+
+static void
+user_access_validate (void __user *uaddr, size_t size)
+{
+  if (uaddr + size >= PHYS_BASE)
+    sys_exit (-1);
+  access_validate (uaddr, size);
 }
 
 static int
 sys_exec (const char __user *cmd)
 {
-  access_validate (cmd, strlen (cmd) + 1);
+  user_access_validate (cmd, strlen (cmd) + 1);
 
   acquire_filesys ();
   int pid = process_execute (cmd);
@@ -140,7 +151,7 @@ sys_wait (int pid)
 static int
 sys_create (const char __user *file, unsigned initial_size)
 {
-  access_validate (file, strlen (file) + 1);
+  user_access_validate (file, strlen (file) + 1);
 
   return 0;
 }
@@ -149,19 +160,19 @@ static int
 sys_open (const char *path)
 {
   // memory validation
-  access_validate (path, strlen (path) + 1);
+  user_access_validate (path, strlen (path) + 1);
 
   acquire_filesys ();
   struct file *file = filesys_open (path);
   release_filesys ();
 
-  return file ? file : -1;
+  return file ? (int)file : -1;
 }
 
 static bool
 sys_remove (const char *path)
 {
-  access_validate (path, strlen (path) + 1);
+  user_access_validate (path, strlen (path) + 1);
 
   acquire_filesys ();
   bool result = filesys_remove (path);
@@ -210,7 +221,7 @@ sys_close (int fd)
 int
 sys_read (int fd, uint8_t __user *buffer, unsigned size)
 {
-  access_validate (buffer, size);
+  user_access_validate (buffer, size);
 
   // stdin
   if (fd == STDIN_FILENO)
@@ -232,7 +243,7 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
-  access_validate (buffer, size);
+  user_access_validate (buffer, size);
 
   // stdout
   if (fd == STDOUT_FILENO)
@@ -256,7 +267,7 @@ sys_write (int fd, const char __user *buffer, unsigned size)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  access_validate (f, sizeof (struct intr_frame));
+  user_access_validate (f->esp, sizeof (struct intr_frame));
 
   switch (*(int *)f->esp)
     {
