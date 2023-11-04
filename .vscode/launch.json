@@ -35,7 +35,7 @@
             "miDebuggerServerAddress": "localhost:1234",
             "miDebuggerPath": "/usr/local/bin/pintos-gdb",
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/src",
+            "cwd": "${workspaceFolder}/src/userprog/build",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
@@ -46,8 +46,8 @@
                     "ignoreFailures": true
                 },
                 {
-                    "text": "loadusersymbols ${workspaceFolder}/src/userprog/build/tests/userprog/${input:test_name}",
-                    "description": "Import user program",
+                    "description": "Load user symbols",
+                    "text": "source ${workspaceFolder}/src/userprog/build/.loadsymbols",
                     "ignoreFailures": false
                 }
             ],
@@ -65,7 +65,7 @@
             "miDebuggerServerAddress": "localhost:1234",
             "miDebuggerPath": "/usr/local/bin/pintos-gdb",
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/src",
+            "cwd": "${workspaceFolder}/src/userprog/build",
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",
@@ -160,13 +160,6 @@
                 "loadAll": true,
                 "exceptionList": ""
             }
-        }
-    ],
-    "inputs": [
-        {
-            "id": "test_name",
-            "type": "promptString",
-            "description": "Name of the program containing the symbols (e.g., args-multiple)"
         }
     ]
 }

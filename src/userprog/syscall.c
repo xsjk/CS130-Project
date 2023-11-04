@@ -117,24 +117,29 @@ sys_exit (int status)
 }
 
 static void
-access_validate (void __user *uaddr, size_t size)
+user_access_validate (void __user *uaddr, size_t size)
 {
-  if (try_load (uaddr) == -1 || try_load (uaddr + size - 1) == -1)
+  if (uaddr + size >= PHYS_BASE || try_load (uaddr) == -1
+      || try_load (uaddr + size - 1) == -1)
     sys_exit (-1);
 }
 
 static void
-user_access_validate (void __user *uaddr, size_t size)
+user_access_validate_string (const char __user *uaddr)
 {
-  if (uaddr + size >= PHYS_BASE)
-    sys_exit (-1);
-  access_validate (uaddr, size);
+  int byte;
+  do
+    {
+      if (uaddr >= PHYS_BASE || (byte = try_load (uaddr++)) == -1)
+        sys_exit (-1);
+    }
+  while (byte != 0);
 }
 
 static int
 sys_exec (const char __user *cmd)
 {
-  user_access_validate (cmd, strlen (cmd) + 1);
+  user_access_validate_string (cmd);
 
   acquire_filesys ();
   int pid = process_execute (cmd);
@@ -148,19 +153,22 @@ sys_wait (int pid)
   return process_wait (pid);
 }
 
-static int
+static bool
 sys_create (const char __user *file, unsigned initial_size)
 {
-  user_access_validate (file, strlen (file) + 1);
+  user_access_validate_string (file);
 
-  return 0;
+  acquire_filesys ();
+  bool result = filesys_create (file, initial_size);
+  release_filesys ();
+  return result;
 }
 
 static int
 sys_open (const char *path)
 {
   // memory validation
-  user_access_validate (path, strlen (path) + 1);
+  user_access_validate_string (path);
 
   acquire_filesys ();
   struct file *file = filesys_open (path);
@@ -172,7 +180,7 @@ sys_open (const char *path)
 static bool
 sys_remove (const char *path)
 {
-  user_access_validate (path, strlen (path) + 1);
+  user_access_validate_string (path);
 
   acquire_filesys ();
   bool result = filesys_remove (path);
@@ -267,7 +275,7 @@ sys_write (int fd, const char __user *buffer, unsigned size)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  user_access_validate (f->esp, sizeof (struct intr_frame));
+  user_access_validate (f->esp, sizeof (int) * 4);
 
   switch (*(int *)f->esp)
     {
