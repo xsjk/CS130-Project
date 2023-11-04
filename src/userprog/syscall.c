@@ -1,13 +1,16 @@
 #include "userprog/syscall.h"
 #include "devices/block.h"
-#include "filesys/directory.h"
-#include "filesys/filesys.h"
 #include "process.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <filesys/directory.h>
+#include <filesys/file.h>
+#include <filesys/filesys.h>
+#include <filesys/inode.h>
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 
 #define __user
@@ -68,11 +71,29 @@ copy_to_user (uint8_t __user *dst, const uint8_t *src, size_t size)
   return true;
 }
 
+static struct lock filesys_lock;
+
+static inline void
+acquire_filesys (void)
+{
+  lock_acquire (&filesys_lock);
+}
+
+static inline void
+release_filesys (void)
+{
+  lock_release (&filesys_lock);
+}
+
+static inline bool
+has_acquired_filesys (void)
+{
+  return lock_held_by_current_thread (&filesys_lock);
+}
+
 /*************************/
 /* System call handlers. */
 /*************************/
-
-static struct lock filesys_lock;
 
 static void
 sys_halt ()
@@ -84,8 +105,8 @@ sys_halt ()
 static void
 sys_exit (int status)
 {
-  if (lock_held_by_current_thread (&filesys_lock))
-    lock_release (&filesys_lock);
+  if (has_acquired_filesys ())
+    release_filesys ();
 
   printf ("%s: exit(%d)\n", thread_current ()->name, status);
   thread_exit ();
@@ -93,111 +114,139 @@ sys_exit (int status)
 }
 
 static void
-test_access (void __user *uaddr)
+access_validate (void __user *uaddr, size_t size)
 {
-  if (get_user (uaddr) == -1)
+  if (get_user (uaddr) == -1 || get_user (uaddr + size - 1) == -1)
     sys_exit (-1);
 }
 
 static int
 sys_exec (const char __user *cmd)
 {
-  test_access (cmd);
-  lock_acquire (&filesys_lock);
+  access_validate (cmd, strlen (cmd) + 1);
+
+  acquire_filesys ();
   int pid = process_execute (cmd);
-  lock_release (&filesys_lock);
+  release_filesys ();
   return pid;
 }
 
 static int
 sys_wait (int pid)
 {
-  struct thread *child = get_child (pid);
-  if (child == NULL)
-    // it is not a child of current thread
-    return -1;
-  sema_down (&child->wait_sema);
-  return child->exit_status;
-  // return process_wait (pid);
+  return process_wait (pid);
 }
 
 static int
 sys_create (const char __user *file, unsigned initial_size)
 {
-  /// TODO: implement
-  printf ("sys_create\n");
+  access_validate (file, strlen (file) + 1);
+
   return 0;
 }
 
 static int
-sys_open (const char *file)
+sys_open (const char *path)
 {
   // memory validation
-  test_access (file);
-  /// TODO: implement
-  return 0;
+  access_validate (path, strlen (path) + 1);
+
+  acquire_filesys ();
+  struct file *file = filesys_open (path);
+  release_filesys ();
+
+  return file ? file : -1;
 }
 
-static int
-sys_remove (const char *file)
+static bool
+sys_remove (const char *path)
 {
-  // memory validation
-  test_access (file);
+  access_validate (path, strlen (path) + 1);
 
-  lock_acquire (&filesys_lock);
-  int result = filesys_remove (file);
-  lock_release (&filesys_lock);
+  acquire_filesys ();
+  bool result = filesys_remove (path);
+  release_filesys ();
+
   return result;
 }
 
 int
 sys_filesize (int fd)
 {
-  /// TODO: implement
-  printf ("sys_filesize\n");
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  int result = filesys_remove (fd);
+  release_filesys ();
   return 0;
 }
 
 void
 sys_seek (int fd, unsigned position)
 {
-  /// TODO: implement
-  printf ("sys_seek\n");
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  file_seek (fd, position);
+  release_filesys ();
 }
 
-unsigned
+off_t
 sys_tell (int fd)
 {
-  /// TODO: implement
-  printf ("sys_tell\n");
-  return 0;
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  return file_tell (fd);
+  release_filesys ();
 }
 
 void
 sys_close (int fd)
 {
-  /// TODO: implement
-  printf ("sys_close\n");
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  file_close (fd);
+  release_filesys ();
 }
 
 int
-sys_read (int fd, void *buffer, unsigned size)
+sys_read (int fd, uint8_t __user *buffer, unsigned size)
 {
-  /// TODO: implement
-  printf ("sys_read\n");
-  return 0;
+  access_validate (buffer, size);
+
+  // stdin
+  if (fd == STDIN_FILENO)
+    {
+      int i;
+      for (i = 0; i < size; i++)
+        buffer[i] = input_getc ();
+      return i;
+    }
+
+  // file
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  int bytes_read = file_read (fd, buffer, size);
+  release_filesys ();
+  return bytes_read;
 }
 
 int
-sys_write (int fd, const void *buffer, unsigned size)
+sys_write (int fd, const char __user *buffer, unsigned size)
 {
-  /// TODO: implement
-  if (fd == 1)
+  access_validate (buffer, size);
+
+  // stdout
+  if (fd == STDOUT_FILENO)
     {
       putbuf (buffer, size);
       return size;
     }
-  return 0;
+
+  // file
+  ASSERT (is_file (fd));
+  acquire_filesys ();
+  int bytes_written = file_write (fd, buffer, size);
+  release_filesys ();
+  return bytes_written;
 }
 
 /*************************/
@@ -207,6 +256,8 @@ sys_write (int fd, const void *buffer, unsigned size)
 static void
 syscall_handler (struct intr_frame *f)
 {
+  access_validate (f, sizeof (struct intr_frame));
+
   switch (*(int *)f->esp)
     {
     case SYS_HALT:
