@@ -6,15 +6,6 @@
 /* Identifies an file. */
 #define FILE_MAGIC 0x256c6966
 
-/* An open file. */
-struct file
-{
-  struct inode *inode; /* File's inode. */
-  off_t pos;           /* Current position. */
-  bool deny_write : 1; /* Has file_deny_write() been called? */
-  int magic : 31;
-};
-
 bool
 is_file (struct file *file)
 {
@@ -34,6 +25,11 @@ file_open (struct inode *inode)
       file->pos = 0;
       file->deny_write = false;
       file->magic = FILE_MAGIC;
+#ifdef USERPROG
+      file->elem.prev = NULL;
+      file->elem.next = NULL;
+      file_set_ownwer (file);
+#endif
       return file;
     }
   else
@@ -177,3 +173,27 @@ file_tell (struct file *file)
   ASSERT (file != NULL);
   return file->pos;
 }
+
+#ifdef USERPROG
+
+#include "threads/thread.h"
+
+struct thread *
+file_get_owner (struct file *file)
+{
+  return (struct thread *)((char *)file + file->fd);
+}
+
+void
+file_set_ownwer (struct file *file)
+{
+  file->fd = (char *)thread_current () - (char *)file;
+}
+
+struct file *
+file_from_fd (int fd)
+{
+  return (struct file *)((char *)thread_current () - fd);
+}
+
+#endif

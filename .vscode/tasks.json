@@ -101,7 +101,7 @@
                 "[P2] compile",
                 "[P2] user symbol generate for gdb"
             ],
-            "command": "pintos -v -k -T 60 --qemu --gdb --filesys-size=2 -p tests/userprog/${input:prog_name} -a ${input:prog_name} -- -q  -f run '${input:prog_name}'",
+            "command": "pintos -v -k -T 60 --qemu --gdb --filesys-size=2 -p tests/userprog/${input:prog_name} -a ${input:prog_name} -p ../../tests/userprog/sample.txt -a sample.txt  -p tests/userprog/child-args -a child-args -p tests/userprog/child-simple -a child-simple -p tests/userprog/child-bad -a child-bad -p tests/userprog/child-close -a child-close -p tests/userprog/child-rox -a child-rox -p tests/filesys/base/child-syn-read -a child-syn-read -- -q  -f run '${input:prog_name}'",
             "options": {
                 "cwd": "${workspaceFolder}/src/userprog/build"
             }
@@ -155,35 +155,6 @@
                 "[P2] compile"
             ],
             "command": "pintos -v -k -T 60 --gdb --filesys-size=2 -p tests/userprog/exec-arg -a exec-arg -p tests/userprog/child-args -a child-args -- -q  -f run exec-arg",
-            "options": {
-                "cwd": "${workspaceFolder}/src/userprog/build"
-            }
-        },
-        {
-            "label": "[P2] Run syn-read",
-            "type": "shell",
-            "isBackground": true,
-            "problemMatcher": [
-                {
-                    "pattern": [
-                        {
-                            "regexp": ".",
-                            "file": 1,
-                            "location": 2,
-                            "message": 3
-                        }
-                    ],
-                    "background": {
-                        "activeOnStart": true,
-                        "beginsPattern": ".",
-                        "endsPattern": ".",
-                    }
-                }
-            ],
-            "dependsOn": [
-                "[P2] compile"
-            ],
-            "command": "pintos -v -k -T 300 --gdb --filesys-size=2 -p tests/filesys/base/syn-read -a syn-read -p tests/filesys/base/child-syn-read -a child-syn-read -- -q  -f run syn-read",
             "options": {
                 "cwd": "${workspaceFolder}/src/userprog/build"
             }
@@ -329,7 +300,8 @@
                 "write-boundary",
                 "write-normal",
                 "write-stdin",
-                "write-zero"
+                "write-zero",
+                "multi-oom"
             ]
         },
         {

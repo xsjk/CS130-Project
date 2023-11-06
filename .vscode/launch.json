@@ -7,7 +7,6 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/threads/build/kernel.o",
             "preLaunchTask": "[P1] Run Test in GDB mode",
-            "miDebuggerPath": "/usr/local/bin/pintos-gdb",
             "miDebuggerServerAddress": "localhost:1234",
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/src",
@@ -82,41 +81,6 @@
                 },
                 {
                     "text": "loadusersymbols ${workspaceFolder}/src/userprog/build/tests/userprog/child-args",
-                    "description": "Import user program",
-                    "ignoreFailures": false
-                }
-            ],
-            "symbolLoadInfo": {
-                "loadAll": true,
-                "exceptionList": ""
-            }
-        },
-        {
-            "name": "[P2] Debug syn-read",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/userprog/build/kernel.o",
-            "preLaunchTask": "[P2] Run syn-read",
-            "miDebuggerServerAddress": "localhost:1234",
-            "miDebuggerPath": "/usr/local/bin/pintos-gdb",
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/src",
-            "environment": [],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "text": "loadusersymbols ${workspaceFolder}/src/userprog/build/tests/filesys/base/syn-read",
-                    "description": "Import user program",
-                    "ignoreFailures": false
-                },
-                {
-                    "text": "loadusersymbols ${workspaceFolder}/src/userprog/build/tests/filesys/base/child-syn-read",
                     "description": "Import user program",
                     "ignoreFailures": false
                 }

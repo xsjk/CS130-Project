@@ -13,6 +13,7 @@
 #include "userprog/tss.h"
 #include <debug.h>
 #include <inttypes.h>
+#include <list.h>
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,116 +21,181 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load_entry (struct file *file, void (**eip) (void), void **esp);
+struct args
+{
+  int argc;
+  char **argv;
+};
+
+static inline struct args *
+parse_args (const char *cmd)
+{
+  char *page = palloc_get_page (0);
+  if (page == NULL)
+    return NULL;
+
+  int offset = strlcpy (page, cmd, 128) + 1;
+  struct args *args = page + offset; // struct args start from the end of cmd
+  args->argc = 0;
+  args->argv = args + 1; // argv[0] start from the end of struct args
+
+  for (char *save_ptr, *token = strtok_r (page, " ", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr))
+    args->argv[args->argc++] = token;
+  args->argv[args->argc] = NULL;
+
+  return args;
+}
+
+static inline void
+free_args (struct args *args)
+{
+  palloc_free_page (args->argv[0]);
+}
+
+static struct intr_frame *
+create_intr_frame (struct args *args)
+{
+  bool success = false;
+  struct intr_frame *infr = NULL;
+  struct file *file = NULL;
+
+  // allocate
+  infr = palloc_get_page (PAL_ZERO);
+  if (infr == NULL)
+    goto done;
+
+  // open executable
+  char *filename = args->argv[0];
+  file = filesys_open (filename);
+  if (file == NULL)
+    goto done;
+
+  // initialize infr
+  infr->gs = infr->fs = infr->es = infr->ds = infr->ss = SEL_UDSEG;
+  infr->cs = SEL_UCSEG;
+  infr->eflags = FLAG_IF | FLAG_MBS;
+
+  // load elf entry
+  success = load_entry (file, infr->eip, infr->esp);
+  if (!success)
+    goto done;
+
+  // push args
+  {
+    // allocate
+    int cmd_length = (char *)args - args->argv[0];
+    char *cmd = infr->esp -= cmd_length;
+    infr->esp = (uint32_t)infr->esp & 0xfffffffc;
+    infr->esp -= (args->argc + 1) * 4 + 12;
+
+    // copy
+    int *esp = infr->esp;
+    esp[0] = NULL;                                      // return addr
+    esp[1] = args->argc;                                // argc
+    esp[2] = &esp[3];                                   // argv
+    for (int i = 0; i < args->argc; i++)                // argv[]
+      esp[3 + i] = args->argv[i] - args->argv[0] + cmd; //
+    esp[3 + args->argc] = NULL;                         //
+    memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
+  }
+
+  success = true;
+
+done:
+  file_close (file);
+  palloc_free_page (infr);
+  if (success)
+    return infr;
+  else
+    return NULL;
+}
+
+static void
+free_intr_frame (struct intr_frame *inft)
+{
+  palloc_free_page (inft);
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name)
+process_execute (const char *cmd)
 {
-  char *fn_copy;
-  tid_t tid;
-  char *save_ptr;
   struct thread *cur = thread_current ();
+  struct args *args = parse_args (cmd);
 
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  // test file
+  char *filename = args->argv[0];
+  struct file *file = filesys_open (filename);
+  if (file == NULL)
+    goto error;
+  file_close (file);
 
-  /* get Filename */
-  file_name = strtok_r (file_name, " ", &save_ptr);
-  if (file_name == NULL)
-    return TID_ERROR;
+  enum intr_level old_level = intr_disable ();
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
-  // if valid, add to child list
-  else
+  tid_t tid = thread_create (filename, PRI_DEFAULT, start_process, args);
+  if (tid != TID_ERROR)
     {
-      struct thread *match_thread = get_thread (tid);
-      list_push_back (&cur->child_list, &match_thread->childelem);
+      struct thread *child = get_thread (tid);
+      lock_acquire (&child->exit_lock);
+      list_push_back (&cur->child_list, &child->childelem);
     }
+
+  intr_set_level (old_level);
+
+  if (tid == TID_ERROR)
+    goto error;
+
   return tid;
+
+error:
+
+  free_args (args);
+  return TID_ERROR;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *aux)
 {
-  char *file_name = file_name_;
-  struct intr_frame if_;
-  bool success;
-  char *arg_name, *save_ptr;
-  char *argv[64], *arg_address[64];
-  int argc = 0, addr_offset, word_align_num;
-
-  arg_name = strtok_r (file_name_, " ", &save_ptr);
-  file_name = arg_name;
+  struct args *args = aux;
+  struct intr_frame infr;
 
   /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  memset (&infr, 0, sizeof infr);
+  infr.gs = infr.fs = infr.es = infr.ds = infr.ss = SEL_UDSEG;
+  infr.cs = SEL_UCSEG;
+  infr.eflags = FLAG_IF | FLAG_MBS;
+  bool success = load (args->argv[0], &infr.eip, &infr.esp);
 
   /* Argument Passing*/
   if (success)
     {
-      // get all arguments
-      while (arg_name != NULL && argc < 64)
-        {
-          argv[argc] = arg_name;
-          argc++;
-          arg_name = strtok_r (NULL, " ", &save_ptr);
-        }
-      // push to stack
-      // argv[][]
-      for (int i = argc - 1; i >= 0; i--)
-        {
-          if_.esp -= strlen (argv[i]) + 1;
-          // *(char**)if_.esp = argv[i];
-          memcpy (if_.esp, argv[i], sizeof (char) * strlen (argv[i]) + 1);
-          // save the address of each string
-          arg_address[i] = (char *)if_.esp;
-        }
-      // word_align
-      word_align_num = (size_t)if_.esp % 4;
-      for (int i = 0; i < word_align_num; i++)
-        {
-          if_.esp -= sizeof (uint8_t);
-          *(uint8_t *)if_.esp = 0;
-        }
-      // argv[argc]
-      if_.esp -= sizeof (char *);
-      *(char **)if_.esp = NULL;
-      // argv[]
-      for (int i = argc - 1; i >= 0; i--)
-        {
-          if_.esp -= sizeof (char *);
-          // *(char**)if_.esp = arg_address[i];
-          memcpy (if_.esp, &arg_address[i], sizeof (char *));
-        }
-      // argv
-      if_.esp -= sizeof (char **);
-      *(char ***)if_.esp = (char **)(if_.esp + sizeof (char **));
-      // argc
-      if_.esp -= sizeof (int32_t);
-      *(int *)if_.esp = argc;
-      // return addr
-      if_.esp -= sizeof (void *);
-      *(void **)if_.esp = 0;
+      // offset
+      int cmd_length = (char *)args - args->argv[0];
+      char *cmd = infr.esp -= cmd_length;
+      infr.esp = (uint32_t)infr.esp & 0xfffffffc;
+      infr.esp -= (args->argc + 1) * 4 + 12;
+
+      // copy data
+      int *esp = infr.esp;
+      esp[0] = NULL;                                      // return addr
+      esp[1] = args->argc;                                // argc
+      esp[2] = &esp[3];                                   // argv
+      for (int i = 0; i < args->argc; i++)                // argv[]
+        esp[3 + i] = args->argv[i] - args->argv[0] + cmd; //
+      esp[3 + args->argc] = NULL;                         //
+      memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
     }
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  free_args (args);
+
   if (!success)
     thread_exit ();
 
@@ -139,7 +205,7 @@ start_process (void *file_name_)
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&infr) : "memory");
   NOT_REACHED ();
 }
 
@@ -153,25 +219,77 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED)
+process_wait (tid_t child_tid)
 {
+  struct thread *cur = thread_current ();
   struct thread *child = get_child (child_tid);
   if (child == NULL)
-    {
-      return -1;
-    }
-  struct thread *cur = thread_current ();
+    return -1;
+
+  ASSERT (lock_held_by_current_thread (&child->exit_lock));
+  cur->child_waiting = child;
+  lock_release (&child->exit_lock);
   list_remove (&child->childelem);
+
   sema_down (&child->wait_sema);
-  return child->exit_status;
+  return cur->last_exit_status;
+}
+
+static inline void
+thread_close_all_files (void)
+{
+  struct thread *cur = thread_current ();
+
+  acquire_filesys ();
+  for (struct list_elem *e = list_begin (&cur->files);
+       e != list_end (&cur->files);)
+    {
+      struct file *f = list_entry (e, struct file, elem);
+      ASSERT (is_file (f));
+      struct thread *onwer = file_get_owner (f);
+      ASSERT (is_thread (onwer));
+      ASSERT (onwer == cur);
+      e = list_remove (e);
+      file_close (f);
+    }
+  release_filesys ();
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
+
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  if (cur->parent)
+    {
+      // wait for the parent to wait for this
+      lock_acquire (&cur->exit_lock);
+
+      // pass the exit_status to the parent
+      if (cur->parent->child_waiting == cur)
+        cur->parent->last_exit_status = cur->exit_status;
+
+      sema_up (&cur->wait_sema);
+    }
+
+  // wait all child processes
+  for (struct list_elem *e = list_begin (&cur->child_list);
+       e != list_end (&cur->child_list);)
+    {
+      struct thread *child = list_entry (e, struct thread, childelem);
+      tid_t tid = child->tid;
+      e = list_remove (e);
+      process_wait (tid);
+    }
+
+  // close all open files
+  thread_close_all_files ();
+  ASSERT (list_empty (&cur->files));
+
+  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -280,12 +398,11 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool
-load (const char *file_name, void (**eip) (void), void **esp)
+static bool
+load_entry (struct file *file, void (**eip) (void), void **esp)
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
-  struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
   int i;
@@ -297,23 +414,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  file_name = strtok_r (file_name, " ", &save_ptr);
-
-  /* Open executable file. */
-  file = filesys_open (file_name);
-  if (file == NULL)
-    {
-      printf ("load: %s: open failed\n", file_name);
-      goto done;
-    }
-
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2
       || ehdr.e_machine != 3 || ehdr.e_version != 1
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr) || ehdr.e_phnum > 1024)
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n");
       goto done;
     }
 
@@ -387,7 +494,23 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  return success;
+}
+
+static bool
+load (const char *file_name, void (**eip) (void), void **esp)
+{
+  bool success = false;
+  struct thread *cur = thread_current ();
+  acquire_filesys ();
+  struct file *file = filesys_open (file_name);
+  if (file == NULL)
+    goto done;
+  file_deny_write (file);
+  success = load_entry (file, eip, esp);
+  list_push_back (&cur->files, &file->elem);
+done:
+  release_filesys ();
   return success;
 }
 

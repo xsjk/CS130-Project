@@ -74,26 +74,6 @@ copy_to_user (uint8_t __user *dst, const uint8_t *src, size_t size)
   return true;
 }
 
-static struct lock filesys_lock;
-
-static inline void
-acquire_filesys (void)
-{
-  lock_acquire (&filesys_lock);
-}
-
-static inline void
-release_filesys (void)
-{
-  lock_release (&filesys_lock);
-}
-
-static inline bool
-has_acquired_filesys (void)
-{
-  return lock_held_by_current_thread (&filesys_lock);
-}
-
 /*************************/
 /* System call handlers. */
 /*************************/
@@ -111,17 +91,25 @@ sys_exit (int status)
   if (has_acquired_filesys ())
     release_filesys ();
 
-  printf ("%s: exit(%d)\n", thread_current ()->name, status);
+  struct thread *cur = thread_current ();
+  cur->exit_status = status;
   thread_exit ();
   NOT_REACHED ();
 }
 
 static void
+kernel_access_validate (void *addr, size_t size)
+{
+  if (try_load (addr) == -1 || try_load (addr + size - 1) == -1)
+    sys_exit (-1);
+}
+
+static void
 user_access_validate (void __user *uaddr, size_t size)
 {
-  if (uaddr + size >= PHYS_BASE || try_load (uaddr) == -1
-      || try_load (uaddr + size - 1) == -1)
+  if (uaddr + size >= PHYS_BASE)
     sys_exit (-1);
+  kernel_access_validate (uaddr, size);
 }
 
 static void
@@ -134,6 +122,17 @@ user_access_validate_string (const char __user *uaddr)
         sys_exit (-1);
     }
   while (byte != 0);
+}
+
+static struct file *
+file_owner_validate (int fd)
+{
+  struct thread *cur = thread_current ();
+  struct file *file = file_from_fd (fd);
+  kernel_access_validate (file, sizeof (struct file));
+  if (!is_file (file))
+    sys_exit (-1);
+  return file;
 }
 
 static int
@@ -167,14 +166,25 @@ sys_create (const char __user *file, unsigned initial_size)
 static int
 sys_open (const char *path)
 {
+  int fd = -1;
+
   // memory validation
   user_access_validate_string (path);
 
   acquire_filesys ();
   struct file *file = filesys_open (path);
-  release_filesys ();
+  if (file == NULL)
+    goto done;
 
-  return file ? (int)file : -1;
+  // set fd
+  fd = file->fd;
+
+  // add to thread's file list
+  list_push_back (&thread_current ()->files, &file->elem);
+
+done:
+  release_filesys ();
+  return fd;
 }
 
 static bool
@@ -189,40 +199,42 @@ sys_remove (const char *path)
   return result;
 }
 
-int
+off_t
 sys_filesize (int fd)
 {
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  int result = filesys_remove (fd);
+  off_t size = file_length (file);
   release_filesys ();
-  return 0;
+  return size;
 }
 
 void
 sys_seek (int fd, unsigned position)
 {
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  file_seek (fd, position);
+  file_seek (file, position);
   release_filesys ();
 }
 
 off_t
 sys_tell (int fd)
 {
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  return file_tell (fd);
+  off_t pos = file_tell (file);
   release_filesys ();
+  return pos;
 }
 
 void
 sys_close (int fd)
 {
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  file_close (fd);
+  list_remove (&file->elem);
+  file_close (file);
   release_filesys ();
 }
 
@@ -241,9 +253,9 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
     }
 
   // file
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  int bytes_read = file_read (fd, buffer, size);
+  int bytes_read = file_read (file, buffer, size);
   release_filesys ();
   return bytes_read;
 }
@@ -261,9 +273,9 @@ sys_write (int fd, const char __user *buffer, unsigned size)
     }
 
   // file
-  ASSERT (is_file (fd));
+  struct file *file = file_owner_validate (fd);
   acquire_filesys ();
-  int bytes_written = file_write (fd, buffer, size);
+  int bytes_written = file_write (file, buffer, size);
   release_filesys ();
   return bytes_written;
 }
@@ -330,5 +342,4 @@ void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init (&filesys_lock);
 }
