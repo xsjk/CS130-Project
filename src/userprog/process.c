@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PROCESS_MAGIC 0x636f7270
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static bool load_entry (struct file *file, void (**eip) (void), void **esp);
@@ -54,103 +56,90 @@ free_args (struct args *args)
   palloc_free_page (args->argv[0]);
 }
 
-static struct intr_frame *
-create_intr_frame (struct args *args)
+void
+process_init (void)
 {
-  bool success = false;
-  struct intr_frame *infr = NULL;
-  struct file *file = NULL;
-
-  // allocate
-  infr = palloc_get_page (PAL_ZERO);
-  if (infr == NULL)
-    goto done;
-
-  // open executable
-  char *filename = args->argv[0];
-  file = filesys_open (filename);
-  if (file == NULL)
-    goto done;
-
-  // initialize infr
-  infr->gs = infr->fs = infr->es = infr->ds = infr->ss = SEL_UDSEG;
-  infr->cs = SEL_UCSEG;
-  infr->eflags = FLAG_IF | FLAG_MBS;
-
-  // load elf entry
-  success = load_entry (file, infr->eip, infr->esp);
-  if (!success)
-    goto done;
-
-  // push args
-  {
-    // allocate
-    int cmd_length = (char *)args - args->argv[0];
-    char *cmd = infr->esp -= cmd_length;
-    infr->esp = (uint32_t)infr->esp & 0xfffffffc;
-    infr->esp -= (args->argc + 1) * 4 + 12;
-
-    // copy
-    int *esp = infr->esp;
-    esp[0] = NULL;                                      // return addr
-    esp[1] = args->argc;                                // argc
-    esp[2] = &esp[3];                                   // argv
-    for (int i = 0; i < args->argc; i++)                // argv[]
-      esp[3 + i] = args->argv[i] - args->argv[0] + cmd; //
-    esp[3 + args->argc] = NULL;                         //
-    memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
-  }
-
-  success = true;
-
-done:
-  file_close (file);
-  palloc_free_page (infr);
-  if (success)
-    return infr;
-  else
-    return NULL;
 }
 
-static void
-free_intr_frame (struct intr_frame *inft)
+struct process *
+process_current (void)
 {
-  palloc_free_page (inft);
+  struct thread *cur = thread_current ();
+  return cur->process;
+}
+
+pid_t
+process_pid (void)
+{
+  return process_current ()->pid;
+}
+
+void
+init_process (struct process *this, struct thread *thread)
+{
+  ASSERT (this != NULL);
+  ASSERT (thread != NULL);
+  this->exit_status = -1;
+  this->pid = -(int)this;
+  this->thread = thread;
+  this->parent = thread->parent ? thread->parent->process : NULL;
+  if (this->parent)
+    list_push_back (&this->parent->child_list, &this->childelem);
+
+  list_init (&this->child_list);
+  list_init (&this->files);
+  sema_init (&this->wait_sema, 0);
+  sema_init (&this->elf_load_sema, 0);
+  sema_init (&this->exec_sama, 0);
+  this->magic = PROCESS_MAGIC;
+}
+
+#include "threads/malloc.h"
+struct process *
+new_process (struct thread *t)
+{
+  struct process *p = malloc (sizeof *p);
+  if (p)
+    init_process (p, t);
+}
+
+void
+delete_process (struct process *p)
+{
+  free (p);
 }
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
-tid_t
+pid_t
 process_execute (const char *cmd)
 {
-  struct thread *cur = thread_current ();
+  struct thread *t = thread_current ();
   struct args *args = parse_args (cmd);
 
-  // test file
-  char *filename = args->argv[0];
-  struct file *file = filesys_open (filename);
-  if (file == NULL)
-    goto error;
-  file_close (file);
-
-  enum intr_level old_level = intr_disable ();
-
-  tid_t tid = thread_create (filename, PRI_DEFAULT, start_process, args);
-  if (tid != TID_ERROR)
-    {
-      struct thread *child = get_thread (tid);
-      lock_acquire (&child->exit_lock);
-      list_push_back (&cur->child_list, &child->childelem);
-    }
-
-  intr_set_level (old_level);
+  tid_t tid = thread_create (args->argv[0], PRI_DEFAULT, start_process, args);
 
   if (tid == TID_ERROR)
     goto error;
 
-  return tid;
+  struct thread *t_child = get_thread (tid);
+  struct process *p_child = t_child->process = new_process (t_child);
+  if (p_child == NULL)
+    goto error;
+
+  // block until the child process load its elf
+  sema_down (&p_child->elf_load_sema);
+
+  // allow the child process to exit
+  sema_up (&p_child->exec_sama);
+
+  if (p_child->thread == NULL)
+    // child's elf is not loaded due to some error e.g. file not found
+    goto error;
+
+  return p_child->pid;
 
 error:
 
@@ -158,32 +147,27 @@ error:
   return TID_ERROR;
 }
 
-/* A thread function that loads a user process and starts it
-   running. */
-static void
-start_process (void *aux)
+static bool
+intr_frame_init (struct intr_frame *infr, struct args *args)
 {
-  struct args *args = aux;
-  struct intr_frame infr;
-
   /* Initialize interrupt frame and load executable. */
-  memset (&infr, 0, sizeof infr);
-  infr.gs = infr.fs = infr.es = infr.ds = infr.ss = SEL_UDSEG;
-  infr.cs = SEL_UCSEG;
-  infr.eflags = FLAG_IF | FLAG_MBS;
-  bool success = load (args->argv[0], &infr.eip, &infr.esp);
+  memset (infr, 0, sizeof *infr);
+  infr->gs = infr->fs = infr->es = infr->ds = infr->ss = SEL_UDSEG;
+  infr->cs = SEL_UCSEG;
+  infr->eflags = FLAG_IF | FLAG_MBS;
+  bool success = load (args->argv[0], &infr->eip, &infr->esp);
 
   /* Argument Passing*/
   if (success)
     {
       // offset
       int cmd_length = (char *)args - args->argv[0];
-      char *cmd = infr.esp -= cmd_length;
-      infr.esp = (uint32_t)infr.esp & 0xfffffffc;
-      infr.esp -= (args->argc + 1) * 4 + 12;
+      char *cmd = infr->esp -= cmd_length;
+      infr->esp = (uint32_t)infr->esp & 0xfffffffc;
+      infr->esp -= (args->argc + 1) * 4 + 12;
 
       // copy data
-      int *esp = infr.esp;
+      int *esp = infr->esp;
       esp[0] = NULL;                                      // return addr
       esp[1] = args->argc;                                // argc
       esp[2] = &esp[3];                                   // argv
@@ -193,11 +177,30 @@ start_process (void *aux)
       memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
     }
 
-  /* If load failed, quit. */
+  return success;
+}
+
+/* A thread function that loads a user process and starts it
+   running. */
+static void
+start_process (void *aux)
+{
+  struct args *args = aux;
+  struct intr_frame infr;
+  struct thread *t = thread_current ();
+  struct process *p = t->process;
+
+  // t->process = new_process (t);
+  if (t->process == NULL)
+    goto error;
+
+  if (!intr_frame_init (&infr, args))
+    goto error;
+
   free_args (args);
 
-  if (!success)
-    thread_exit ();
+  sema_up (&p->elf_load_sema);
+  thread_yield ();
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -207,6 +210,23 @@ start_process (void *aux)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&infr) : "memory");
   NOT_REACHED ();
+
+error:
+  // delete_process (t->process);
+  p->thread = NULL;
+  t->process = NULL;
+  sema_up (&p->elf_load_sema);
+}
+
+#include "syscall.h"
+
+struct process *
+get_process (pid_t pid)
+{
+  struct process *p = -pid;
+  if (is_process (p))
+    return p;
+  return NULL;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -219,36 +239,48 @@ start_process (void *aux)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid)
+process_wait (pid_t pid)
 {
-  struct thread *cur = thread_current ();
-  struct thread *child = get_child (child_tid);
+  struct process *p = process_current ();
+  struct process *child = get_process (pid);
   if (child == NULL)
     return -1;
 
-  ASSERT (lock_held_by_current_thread (&child->exit_lock));
-  cur->child_waiting = child;
-  lock_release (&child->exit_lock);
+  // use list_contains to check
+  //    if the child is the direct child of current process
+  //    if the child is already waited
+  if (!list_contains (&p->child_list, &child->childelem))
+    // it is not the direct child of current process
+    return -1;
+
+  /// NOTE: wait will remove the process from the parent's child list
+  ///       so that the parent view the child as waited
   list_remove (&child->childelem);
 
   sema_down (&child->wait_sema);
-  return cur->last_exit_status;
+  int exit_status = child->exit_status;
+  return exit_status;
 }
 
-static inline void
-thread_close_all_files (void)
+bool
+is_process (struct process *p)
 {
-  struct thread *cur = thread_current ();
+  return kernel_has_access (p, sizeof *p) && p->magic == PROCESS_MAGIC;
+}
+
+void
+process_close_all_files (struct process *p)
+{
 
   acquire_filesys ();
-  for (struct list_elem *e = list_begin (&cur->files);
-       e != list_end (&cur->files);)
+  for (struct list_elem *e = list_begin (&p->files);
+       e != list_end (&p->files);)
     {
       struct file *f = list_entry (e, struct file, elem);
       ASSERT (is_file (f));
-      struct thread *onwer = file_get_owner (f);
-      ASSERT (is_thread (onwer));
-      ASSERT (onwer == cur);
+      struct process *onwer = file_get_owner (f);
+      ASSERT (is_process (onwer));
+      ASSERT (onwer == p);
       e = list_remove (e);
       file_close (f);
     }
@@ -259,41 +291,45 @@ thread_close_all_files (void)
 void
 process_exit (void)
 {
+  struct thread *t = thread_current ();
+  ASSERT (is_thread (t));
 
-  struct thread *cur = thread_current ();
+  struct process *p = process_current ();
   uint32_t *pd;
 
-  if (cur->parent)
-    {
-      // wait for the parent to wait for this
-      lock_acquire (&cur->exit_lock);
-
-      // pass the exit_status to the parent
-      if (cur->parent->child_waiting == cur)
-        cur->parent->last_exit_status = cur->exit_status;
-
-      sema_up (&cur->wait_sema);
-    }
-
-  // wait all child processes
-  for (struct list_elem *e = list_begin (&cur->child_list);
-       e != list_end (&cur->child_list);)
-    {
-      struct thread *child = list_entry (e, struct thread, childelem);
-      tid_t tid = child->tid;
-      e = list_remove (e);
-      process_wait (tid);
-    }
+  ASSERT (is_process (p));
+  ASSERT (p->thread == t);
 
   // close all open files
-  thread_close_all_files ();
-  ASSERT (list_empty (&cur->files));
+  process_close_all_files (p);
+  ASSERT (list_empty (&p->files));
 
-  printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
+  // prevent exiting before "process_exec" of parent process is done
+  sema_down (&p->exec_sama);
+
+  // wait all child processes
+  for (struct list_elem *e = list_begin (&p->child_list);
+       e != list_end (&p->child_list);)
+    {
+      struct process *child = list_entry (e, struct process, childelem);
+      ASSERT (is_process (child));
+      pid_t pid = child->pid;
+      e = list_remove (e);
+      process_wait (pid);
+      delete_process (child);
+    }
+
+  p->thread = NULL;
+
+  printf ("%s: exit(%d)\n", t->name, p->exit_status);
+
+  // tell the parent process that this process is finished
+  if (p->parent)
+    sema_up (&p->wait_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
-  pd = cur->pagedir;
+  pd = t->pagedir;
   if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
@@ -303,7 +339,7 @@ process_exit (void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
-      cur->pagedir = NULL;
+      t->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
@@ -501,14 +537,15 @@ static bool
 load (const char *file_name, void (**eip) (void), void **esp)
 {
   bool success = false;
-  struct thread *cur = thread_current ();
+  struct process *p = process_current ();
+  ASSERT (p != NULL);
   acquire_filesys ();
   struct file *file = filesys_open (file_name);
   if (file == NULL)
     goto done;
   file_deny_write (file);
   success = load_entry (file, eip, esp);
-  list_push_back (&cur->files, &file->elem);
+  list_push_back (&p->files, &file->elem);
 done:
   release_filesys ();
   return success;

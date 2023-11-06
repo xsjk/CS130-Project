@@ -34,9 +34,6 @@ static struct thread *idle_thread;
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
 
-/* Lock used by allocate_tid(). */
-static struct lock tid_lock;
-
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
 {
@@ -88,7 +85,6 @@ thread_init (void)
 {
   ASSERT (intr_get_level () == INTR_OFF);
 
-  lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
 
@@ -96,7 +92,6 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
-  initial_thread->tid = allocate_tid ();
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -180,7 +175,7 @@ thread_create (const char *name, int priority, thread_func *function,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
-  tid = t->tid = allocate_tid ();
+  tid = t->tid;
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -283,7 +278,8 @@ thread_exit (void)
   struct thread *cur = thread_current ();
 
 #ifdef USERPROG
-  process_exit ();
+  if (cur->process)
+    process_exit ();
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -458,24 +454,24 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t);
+  t->tid = allocate_tid ();
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->parent = t == initial_thread ? NULL : thread_current ();
 
 #ifdef USERPROG
-  t->exit_status = -1;
-  t->parent = t == initial_thread ? NULL : thread_current ();
-  t->child_waiting = NULL;
-  t->childelem.next = NULL;
-  t->childelem.prev = NULL;
-  list_init (&t->child_list);
-  list_init (&t->files);
-  sema_init (&t->wait_sema, 0);
-  lock_init (&t->exit_lock);
-#endif
+  t->pagedir = NULL;
+  t->process = NULL;
 
+  if (t == initial_thread)
+    {
+      t->process = t + 1;
+      init_process (t->process, t);
+    }
+#endif
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -584,9 +580,9 @@ allocate_tid (void)
   static tid_t next_tid = 1;
   tid_t tid;
 
-  lock_acquire (&tid_lock);
+  enum intr_level old_level = intr_disable ();
   tid = next_tid++;
-  lock_release (&tid_lock);
+  intr_set_level (old_level);
 
   return tid;
 }
@@ -594,27 +590,6 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-/* project 2 */
-#ifdef USERPROG
-
-struct thread *
-get_child (tid_t tid)
-{
-  struct thread *cur = thread_current ();
-  struct thread *t;
-  for (struct list_elem *it = list_begin (&cur->child_list);
-       it != list_end (&cur->child_list); it = list_next (it))
-    {
-      t = list_entry (it, struct thread, childelem);
-      if (t->tid == tid)
-        {
-          return t;
-        }
-    }
-  /* no valid child */
-  return NULL;
-}
 
 struct thread *
 get_thread (tid_t tid)
@@ -631,5 +606,3 @@ get_thread (tid_t tid)
     }
   return NULL;
 }
-
-#endif

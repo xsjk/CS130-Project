@@ -74,6 +74,18 @@ copy_to_user (uint8_t __user *dst, const uint8_t *src, size_t size)
   return true;
 }
 
+bool
+kernel_has_access (uint8_t __user *uaddr, size_t size)
+{
+  return try_load (uaddr) != -1 && try_load (uaddr + size - 1) != -1;
+}
+
+bool
+user_has_access (uint8_t __user *uaddr, size_t size)
+{
+  return uaddr + size < PHYS_BASE && kernel_has_access (uaddr, size);
+}
+
 /*************************/
 /* System call handlers. */
 /*************************/
@@ -91,8 +103,7 @@ sys_exit (int status)
   if (has_acquired_filesys ())
     release_filesys ();
 
-  struct thread *cur = thread_current ();
-  cur->exit_status = status;
+  process_current ()->exit_status = status;
   thread_exit ();
   NOT_REACHED ();
 }
@@ -139,10 +150,7 @@ static int
 sys_exec (const char __user *cmd)
 {
   user_access_validate_string (cmd);
-
-  acquire_filesys ();
   int pid = process_execute (cmd);
-  release_filesys ();
   return pid;
 }
 
@@ -180,7 +188,8 @@ sys_open (const char *path)
   fd = file->fd;
 
   // add to thread's file list
-  list_push_back (&thread_current ()->files, &file->elem);
+
+  list_push_back (&process_current ()->files, &file->elem);
 
 done:
   release_filesys ();

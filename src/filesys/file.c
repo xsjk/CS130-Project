@@ -177,23 +177,24 @@ file_tell (struct file *file)
 #ifdef USERPROG
 
 #include "threads/thread.h"
+#include "userprog/process.h"
 
-struct thread *
+struct process *
 file_get_owner (struct file *file)
 {
-  return (struct thread *)((char *)file + file->fd);
+  return (struct process *)((char *)file + file->fd);
 }
 
 void
 file_set_ownwer (struct file *file)
 {
-  file->fd = (char *)thread_current () - (char *)file;
+  file->fd = (char *)process_current () - (char *)file;
 }
 
 struct file *
 file_from_fd (int fd)
 {
-  return (struct file *)((char *)thread_current () - fd);
+  return (struct file *)((char *)process_current () - fd);
 }
 
 #endif

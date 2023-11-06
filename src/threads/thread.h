@@ -25,6 +25,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
 
+#ifdef USERPROG
+struct process;
+#endif
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -97,24 +101,11 @@ struct thread
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
-
-  int exit_status; /* Exit status of the thread. */
-  union
-  {
-    int last_exit_status; /* The Exit status of the waited child */
-    struct thread
-        *child_waiting; /* The child that current process is waiting on */
-  };
-  struct thread *parent;      /* Parent thread. */
-  struct list files;          /* Files opened by this thread*/
-  struct list child_list;     /* List of child processes. */
-  struct list_elem childelem; /* List element for child_list. */
-  struct semaphore wait_sema; /* Semaphore for waiting. */
-  struct lock exit_lock;      /* Lock for exiting. Parent holds this lock
-                                 to prevent child thread from exiting before
-                                 parent thread has got the exit status. */
-
+  struct process
+      *process; /* The user process that is running on this thread */
 #endif
+
+  struct thread *parent; /* The creator of this thread */
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -158,9 +149,6 @@ int thread_get_load_avg (void);
 
 bool is_thread (struct thread *);
 
-/* project 2*/
-#ifdef USERPROG
-struct thread *get_child (tid_t);
 struct thread *get_thread (tid_t);
-#endif
+
 #endif /* threads/thread.h */

@@ -8,6 +8,7 @@
 struct inode;
 #ifdef USERPROG
 struct thread;
+struct process;
 #endif
 
 /* An open file. */
@@ -47,7 +48,7 @@ off_t file_length (struct file *);
 #ifdef USERPROG
 
 /* get the owner thread of a file */
-struct thread *file_get_owner (struct file *file);
+struct process *file_get_owner (struct file *file);
 
 /* set current thread as the owner of a file */
 void file_set_ownwer (struct file *file);
