@@ -7,13 +7,11 @@
     "pintos-mkdisk": "perl",
     "pintos-set-cmdline": "perl",
     "*.ck": "perl",
-    "*.h": "c"
+    "*.h": "c",
+    "*.inc": "c"
   },
   "C_Cpp.formatting": "clangFormat",
   "C_Cpp.clang_format_fallbackStyle": "GNU",
   "editor.tabSize": 2,
-  "editor.formatOnSave": false,
-  "[c]": {
-    "editor.formatOnSave": true
-  }
+  "editor.formatOnSave": true
 }

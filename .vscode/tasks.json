@@ -1,255 +1,245 @@
 {
   "version": "2.0.0",
   "tasks": [
-      {
-          "label": "[P1] compile",
-          "type": "process",
-          "command": "make",
-          "options": {
-              "cwd": "${workspaceFolder}/src/threads"
-          }
-      },
-      {
-          "label": "[P2] compile",
-          "type": "process",
-          "command": "make",
-          "options": {
-              "cwd": "${workspaceFolder}/src/userprog"
-          }
-      },
-      {
-          "label": "[P1] Run Test in GDB mode",
-          "type": "process",
-          "isBackground": true,
-          "problemMatcher": [
-            {
-              "pattern": [
-                {
-                  "regexp": ".",
-                  "file": 1,
-                  "location": 2,
-                  "message": 3
-                }
-              ],
-              "background": {
-                "activeOnStart": true,
-                "beginsPattern": ".",
-                "endsPattern": "."
-              }
-            }
-          ],
-          "command": "make",
-          "args": [
-            "tests/threads/${input:test_name}.debug"
-          ],
-          "dependsOn": [
-            "[P1] compile"
-          ],
-          "options": {
-              "cwd": "${workspaceFolder}/src/threads/build"
-          }
-      },
-      {
-          "label": "[P2] Run Test in GDB mode",
-          "type": "process",
-          "isBackground": true,
-          "problemMatcher": [
-            {
-              "pattern": [
-                {
-                  "regexp": ".",
-                  "file": 1,
-                  "location": 2,
-                  "message": 3
-                }
-              ],
-              "background": {
-                "activeOnStart": true,
-                "beginsPattern": ".",
-                "endsPattern": "."
-              }
-            }
-          ],
-          "command": "make",
-          "args": [
-              "tests/${input:prog_name}.debug"
-          ],
-          "dependsOn": [
-            "[P2] compile"
-          ],
-          "options": {
-              "cwd": "${workspaceFolder}/src/userprog/build"
-          }
-      },
-      {
-          "label": "[P3] compile",
-          "type": "shell",
-          "command": "make",
-          "options": {
-              "cwd": "${workspaceFolder}/src/vm"
-          }
-      },
-      {
-          "label": "[P4] compile",
-          "type": "shell",
-          "command": "make",
-          "options": {
-              "cwd": "${workspaceFolder}/src/filesys"
-          }
-      },
-      {
-          "label": "[P3] Run child-linear",
-          "type": "shell",
-          "isBackground": true,
-          "problemMatcher": [
-              {
-                  "pattern": [
-                      {
-                          "regexp": ".",
-                          "file": 1,
-                          "location": 2,
-                          "message": 3
-                      }
-                  ],
-                  "background": {
-                      "activeOnStart": true,
-                      "beginsPattern": ".",
-                      "endsPattern": ".",
-                  }
-              }
-          ],
-          "dependsOn": [
-              "[P3] compile"
-          ],
-          "command": "pintos -v -k -T 60 --gdb --filesys-size=2 -p tests/vm/page-parallel -a page-parallel -p tests/vm/child-linear -a child-linear --swap-size=4 -- -q  -f run page-parallel",
-          "options": {
-              "cwd": "${workspaceFolder}/src/vm/build"
-          }
+    {
+      "label": "[P1] compile",
+      "type": "process",
+      "command": "make",
+      "options": {
+        "cwd": "${workspaceFolder}/src/threads"
       }
+    },
+    {
+      "label": "[P2] compile",
+      "type": "process",
+      "command": "make",
+      "options": {
+        "cwd": "${workspaceFolder}/src/userprog"
+      }
+    },
+    {
+      "label": "[P1] Run Test in GDB mode",
+      "type": "process",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": [
+            {
+              "regexp": ".",
+              "file": 1,
+              "location": 2,
+              "message": 3
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".",
+            "endsPattern": "."
+          }
+        }
+      ],
+      "command": "make",
+      "args": ["tests/threads/${input:test_name}.debug"],
+      "dependsOn": ["[P1] compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/src/threads/build"
+      }
+    },
+    {
+      "label": "[P2] Run Test in GDB mode",
+      "type": "process",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": [
+            {
+              "regexp": ".",
+              "file": 1,
+              "location": 2,
+              "message": 3
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".",
+            "endsPattern": "."
+          }
+        }
+      ],
+      "command": "make",
+      "args": ["tests/${input:prog_name}.debug"],
+      "dependsOn": ["[P2] compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/src/userprog/build"
+      }
+    },
+    {
+      "label": "[P3] compile",
+      "type": "shell",
+      "command": "make",
+      "options": {
+        "cwd": "${workspaceFolder}/src/vm"
+      }
+    },
+    {
+      "label": "[P4] compile",
+      "type": "shell",
+      "command": "make",
+      "options": {
+        "cwd": "${workspaceFolder}/src/filesys"
+      }
+    },
+    {
+      "label": "[P3] Run child-linear",
+      "type": "shell",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": [
+            {
+              "regexp": ".",
+              "file": 1,
+              "location": 2,
+              "message": 3
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".",
+            "endsPattern": "."
+          }
+        }
+      ],
+      "dependsOn": ["[P3] compile"],
+      "command": "pintos -v -k -T 60 --gdb --filesys-size=2 -p tests/vm/page-parallel -a page-parallel -p tests/vm/child-linear -a child-linear --swap-size=4 -- -q  -f run page-parallel",
+      "options": {
+        "cwd": "${workspaceFolder}/src/vm/build"
+      }
+    }
   ],
   "inputs": [
-      {
-          "id": "test_name",
-          "type": "pickString",
-          "description": "Name of the program containing the symbols",
-          "options": [
-                "alarm-single",
-                "alarm-multiple",
-                "alarm-simultaneous",
-                "alarm-priority",
-                "alarm-zero",
-                "alarm-negative",
-                "priority-change",
-                "priority-donate-one",
-                "priority-donate-multiple",
-                "priority-donate-multiple2",
-                "priority-donate-nest",
-                "priority-donate-sema",
-                "priority-donate-lower",
-                "priority-fifo",
-                "priority-preempt",
-                "priority-sema",
-                "priority-condvar",
-                "priority-donate-chain",
-                "mlfqs-load-1",
-                "mlfqs-load-60",
-                "mlfqs-load-avg",
-                "mlfqs-recent-1",
-                "mlfqs-fair-2",
-                "mlfqs-fair-20",
-                "mlfqs-nice-2",
-                "mlfqs-nice-10",
-                "mlfqs-block",
-                "my-test",
-                "my-test-big",
-          ]
-      },
-      {
-          "id": "prog_name",
-          "type": "pickString",
-          "description": "Name of the Program to load for debugging (e.g., args-multiple)",
-          "options": [
-              "userprog/args-none",
-              "userprog/args-single",
-              "userprog/args-multiple",
-              "userprog/args-many",
-              "userprog/args-dbl-space",
-              "userprog/sc-bad-sp",
-              "userprog/sc-bad-arg",
-              "userprog/sc-boundary",
-              "userprog/sc-boundary-2",
-              "userprog/sc-boundary-3",
-              "userprog/halt",
-              "userprog/exit",
-              "userprog/create-normal",
-              "userprog/create-empty",
-              "userprog/create-null",
-              "userprog/create-bad-ptr",
-              "userprog/create-long",
-              "userprog/create-exists",
-              "userprog/create-bound",
-              "userprog/open-normal",
-              "userprog/open-missing",
-              "userprog/open-boundary",
-              "userprog/open-empty",
-              "userprog/open-null",
-              "userprog/open-bad-ptr",
-              "userprog/open-twice",
-              "userprog/close-normal",
-              "userprog/close-twice",
-              "userprog/close-stdin",
-              "userprog/close-stdout",
-              "userprog/close-bad-fd",
-              "userprog/read-normal",
-              "userprog/read-bad-ptr",
-              "userprog/read-boundary",
-              "userprog/read-zero",
-              "userprog/read-stdout",
-              "userprog/read-bad-fd",
-              "userprog/write-normal",
-              "userprog/write-bad-ptr",
-              "userprog/write-boundary",
-              "userprog/write-zero",
-              "userprog/write-stdin",
-              "userprog/write-bad-fd",
-              "userprog/exec-once",
-              "userprog/exec-arg",
-              "userprog/exec-bound",
-              "userprog/exec-bound-2",
-              "userprog/exec-bound-3",
-              "userprog/exec-multiple",
-              "userprog/exec-missing",
-              "userprog/exec-bad-ptr",
-              "userprog/wait-simple",
-              "userprog/wait-twice",
-              "userprog/wait-killed",
-              "userprog/wait-bad-pid",
-              "userprog/multi-recurse",
-              "userprog/multi-child-fd",
-              "userprog/rox-simple",
-              "userprog/rox-child",
-              "userprog/rox-multichild",
-              "userprog/bad-read",
-              "userprog/bad-write",
-              "userprog/bad-read2",
-              "userprog/bad-write2",
-              "userprog/bad-jump",
-              "userprog/bad-jump2",
-              "userprog/no-vm/multi-oom",
-              "filesys/base/lg-create",
-              "filesys/base/lg-full",
-              "filesys/base/lg-random",
-              "filesys/base/lg-seq-block",
-              "filesys/base/lg-seq-random",
-              "filesys/base/sm-create",
-              "filesys/base/sm-full",
-              "filesys/base/sm-random",
-              "filesys/base/sm-seq-block",
-              "filesys/base/sm-seq-random",
-              "filesys/base/syn-read",
-              "filesys/base/syn-remove",
-              "filesys/base/syn-write"
-          ]
-      }
+    {
+      "id": "test_name",
+      "type": "pickString",
+      "description": "Name of the program containing the symbols",
+      "options": [
+        "alarm-single",
+        "alarm-multiple",
+        "alarm-simultaneous",
+        "alarm-priority",
+        "alarm-zero",
+        "alarm-negative",
+        "priority-change",
+        "priority-donate-one",
+        "priority-donate-multiple",
+        "priority-donate-multiple2",
+        "priority-donate-nest",
+        "priority-donate-sema",
+        "priority-donate-lower",
+        "priority-fifo",
+        "priority-preempt",
+        "priority-sema",
+        "priority-condvar",
+        "priority-donate-chain",
+        "mlfqs-load-1",
+        "mlfqs-load-60",
+        "mlfqs-load-avg",
+        "mlfqs-recent-1",
+        "mlfqs-fair-2",
+        "mlfqs-fair-20",
+        "mlfqs-nice-2",
+        "mlfqs-nice-10",
+        "mlfqs-block",
+        "my-test",
+        "my-test-big"
+      ]
+    },
+    {
+      "id": "prog_name",
+      "type": "pickString",
+      "description": "Name of the Program to load for debugging (e.g., args-multiple)",
+      "options": [
+        "userprog/args-none",
+        "userprog/args-single",
+        "userprog/args-multiple",
+        "userprog/args-many",
+        "userprog/args-dbl-space",
+        "userprog/sc-bad-sp",
+        "userprog/sc-bad-arg",
+        "userprog/sc-boundary",
+        "userprog/sc-boundary-2",
+        "userprog/sc-boundary-3",
+        "userprog/halt",
+        "userprog/exit",
+        "userprog/create-normal",
+        "userprog/create-empty",
+        "userprog/create-null",
+        "userprog/create-bad-ptr",
+        "userprog/create-long",
+        "userprog/create-exists",
+        "userprog/create-bound",
+        "userprog/open-normal",
+        "userprog/open-missing",
+        "userprog/open-boundary",
+        "userprog/open-empty",
+        "userprog/open-null",
+        "userprog/open-bad-ptr",
+        "userprog/open-twice",
+        "userprog/close-normal",
+        "userprog/close-twice",
+        "userprog/close-stdin",
+        "userprog/close-stdout",
+        "userprog/close-bad-fd",
+        "userprog/read-normal",
+        "userprog/read-bad-ptr",
+        "userprog/read-boundary",
+        "userprog/read-zero",
+        "userprog/read-stdout",
+        "userprog/read-bad-fd",
+        "userprog/write-normal",
+        "userprog/write-bad-ptr",
+        "userprog/write-boundary",
+        "userprog/write-zero",
+        "userprog/write-stdin",
+        "userprog/write-bad-fd",
+        "userprog/exec-once",
+        "userprog/exec-arg",
+        "userprog/exec-bound",
+        "userprog/exec-bound-2",
+        "userprog/exec-bound-3",
+        "userprog/exec-multiple",
+        "userprog/exec-missing",
+        "userprog/exec-bad-ptr",
+        "userprog/wait-simple",
+        "userprog/wait-twice",
+        "userprog/wait-killed",
+        "userprog/wait-bad-pid",
+        "userprog/multi-recurse",
+        "userprog/multi-child-fd",
+        "userprog/rox-simple",
+        "userprog/rox-child",
+        "userprog/rox-multichild",
+        "userprog/bad-read",
+        "userprog/bad-write",
+        "userprog/bad-read2",
+        "userprog/bad-write2",
+        "userprog/bad-jump",
+        "userprog/bad-jump2",
+        "userprog/no-vm/multi-oom",
+        "filesys/base/lg-create",
+        "filesys/base/lg-full",
+        "filesys/base/lg-random",
+        "filesys/base/lg-seq-block",
+        "filesys/base/lg-seq-random",
+        "filesys/base/sm-create",
+        "filesys/base/sm-full",
+        "filesys/base/sm-random",
+        "filesys/base/sm-seq-block",
+        "filesys/base/sm-seq-random",
+        "filesys/base/syn-read",
+        "filesys/base/syn-remove",
+        "filesys/base/syn-write"
+      ]
+    }
   ]
 }

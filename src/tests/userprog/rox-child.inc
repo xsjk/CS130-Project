@@ -1,11 +1,11 @@
 /* -*- c -*- */
 
-#include <syscall.h>
 #include "tests/lib.h"
 #include "tests/main.h"
+#include <syscall.h>
 
 void
-test_main (void) 
+test_main (void)
 {
   const char *child_cmd = "child-rox " CHILD_CNT;
   int handle;
@@ -14,10 +14,10 @@ test_main (void)
 
   /* Open child-rox, read from it, write back same data. */
   CHECK ((handle = open ("child-rox")) > 1, "open \"child-rox\"");
-  CHECK (read (handle, buffer, sizeof buffer) == (int) sizeof buffer,
+  CHECK (read (handle, buffer, sizeof buffer) == (int)sizeof buffer,
          "read \"child-rox\"");
   seek (handle, 0);
-  CHECK (write (handle, buffer, sizeof buffer) == (int) sizeof buffer,
+  CHECK (write (handle, buffer, sizeof buffer) == (int)sizeof buffer,
          "write \"child-rox\"");
 
   /* Execute child-rox and wait for it. */
@@ -28,6 +28,6 @@ test_main (void)
 
   /* Write to child-rox again. */
   seek (handle, 0);
-  CHECK (write (handle, buffer, sizeof buffer) == (int) sizeof buffer,
+  CHECK (write (handle, buffer, sizeof buffer) == (int)sizeof buffer,
          "write \"child-rox\"");
 }

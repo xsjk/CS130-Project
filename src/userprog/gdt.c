@@ -95,7 +95,7 @@ make_seg_desc (uint32_t base, uint32_t limit, enum seg_class cls, int type,
 
   e1 = (((base >> 16) & 0xff)   /* Base 23:16. */
         | (type << 8)           /* Segment type. */
-        | (cls << 12)         /* 0=system, 1=code/data. */
+        | (cls << 12)           /* 0=system, 1=code/data. */
         | (dpl << 13)           /* Descriptor privilege. */
         | (1 << 15)             /* Present. */
         | (limit & 0xf0000)     /* Limit 16:19. */
