@@ -147,8 +147,30 @@ start:
 #       We don't support floating point.
 
 	movl %cr0, %eax
-	orl $CR0_PE | CR0_PG | CR0_WP | CR0_EM, %eax
+	orl $CR0_PE | CR0_PG | CR0_WP, %eax
 	movl %eax, %cr0
+
+# Initialize floating-point unit
+	fninit
+
+# Set x87 FPU Control Word control word 
+# 
+#                               | Exception Mask |
+# 15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0
+#           |  \ /               |  |  |  |  |  |
+#           |   X                |  |  |  |  |  Invalid Operation
+#           |   |                |  |  |  | Denormal Operand
+#           |   |                |  |  |  Zero Divide
+#           |   |                |  |  Overflow
+#           |   |                |  Underflow
+#           |   Rounding Control Precision
+#           Infinite Control
+#           1  1  1  0  0  0  0  1  1  1  1  1  1 = 0x1c37
+# See [IA32-v3a] section 8.1.4 "x87 FPU Control Word" for a description
+
+	# push $0x1c37
+	# 	fldcw (%esp)
+	# add $4, %esp
 
 # We're now in protected mode in a 16-bit segment.  The CPU still has
 # the real-mode code segment cached in %cs's segment descriptor.  We

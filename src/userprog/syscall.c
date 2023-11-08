@@ -9,6 +9,7 @@
 #include <filesys/file.h>
 #include <filesys/filesys.h>
 #include <filesys/inode.h>
+#include <list.h>
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>

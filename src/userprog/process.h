@@ -29,7 +29,7 @@ struct process
   int magic;
 };
 
-void init_process (struct process *this, struct thread *);
+void init_process (struct process *, struct thread *);
 struct process *new_process (struct thread *);
 void delete_process (struct process *);
 
