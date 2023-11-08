@@ -38,9 +38,12 @@ parse_args (const char *cmd)
     return NULL;
 
   int offset = strlcpy (page, cmd, 128) + 1;
-  struct args *args = page + offset; // struct args start from the end of cmd
+  struct args *args
+      = (struct args *)(page
+                        + offset); // struct args start from the end of cmd
   args->argc = 0;
-  args->argv = args + 1; // argv[0] start from the end of struct args
+  args->argv
+      = (char **)(args + 1); // argv[0] start from the end of struct args
 
   for (char *save_ptr, *token = strtok_r (page, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
@@ -54,11 +57,6 @@ static inline void
 free_args (struct args *args)
 {
   palloc_free_page (args->argv[0]);
-}
-
-void
-process_init (void)
-{
 }
 
 struct process *
@@ -75,23 +73,23 @@ process_pid (void)
 }
 
 void
-init_process (struct process *this, struct thread *thread)
+init_process (struct process *p, struct thread *thread)
 {
-  ASSERT (this != NULL);
+  ASSERT (p != NULL);
   ASSERT (thread != NULL);
-  this->exit_status = -1;
-  this->pid = -(int)this;
-  this->thread = thread;
-  this->parent = thread->parent ? thread->parent->process : NULL;
-  if (this->parent)
-    list_push_back (&this->parent->child_list, &this->childelem);
+  p->exit_status = -1;
+  p->pid = -(int)p;
+  p->thread = thread;
+  p->parent = thread->parent ? thread->parent->process : NULL;
+  if (p->parent)
+    list_push_back (&p->parent->child_list, &p->childelem);
 
-  list_init (&this->child_list);
-  list_init (&this->files);
-  sema_init (&this->wait_sema, 0);
-  sema_init (&this->elf_load_sema, 0);
-  sema_init (&this->exec_sama, 0);
-  this->magic = PROCESS_MAGIC;
+  list_init (&p->child_list);
+  list_init (&p->files);
+  sema_init (&p->wait_sema, 0);
+  sema_init (&p->elf_load_sema, 0);
+  sema_init (&p->exec_sama, 0);
+  p->magic = PROCESS_MAGIC;
 }
 
 #include "threads/malloc.h"
@@ -171,12 +169,12 @@ intr_frame_init (struct intr_frame *infr, struct args *args)
 
       // copy data
       int *esp = infr->esp;
-      esp[0] = NULL;                                      // return addr
+      esp[0] = 0;                                         // return addr
       esp[1] = args->argc;                                // argc
       esp[2] = &esp[3];                                   // argv
       for (int i = 0; i < args->argc; i++)                // argv[]
         esp[3 + i] = args->argv[i] - args->argv[0] + cmd; //
-      esp[3 + args->argc] = NULL;                         //
+      esp[3 + args->argc] = 0;                            //
       memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
     }
 
@@ -268,7 +266,7 @@ process_wait (pid_t pid)
 bool
 is_process (struct process *p)
 {
-  return kernel_has_access (p, sizeof *p) && p->magic == PROCESS_MAGIC;
+  return kernel_has_access ((void *)p, sizeof *p) && p->magic == PROCESS_MAGIC;
 }
 
 void

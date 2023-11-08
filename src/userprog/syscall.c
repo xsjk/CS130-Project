@@ -1,10 +1,12 @@
 #include "userprog/syscall.h"
-#include "devices/block.h"
 #include "process.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <devices/block.h>
+#include <devices/input.h>
+#include <devices/shutdown.h>
 #include <filesys/directory.h>
 #include <filesys/file.h>
 #include <filesys/filesys.h>
@@ -299,49 +301,48 @@ syscall_handler (struct intr_frame *f)
 {
   user_access_validate (f->esp, sizeof (int) * 4);
 
-  switch (*(int *)f->esp)
+  int *args = f->esp;
+
+  switch (args[0])
     {
     case SYS_HALT:
       sys_halt ();
       break;
     case SYS_EXIT:
-      sys_exit (*(int *)(f->esp + 4));
+      sys_exit (args[1]);
       break;
     case SYS_EXEC:
-      f->eax = sys_exec (*(const char **)(f->esp + 4));
+      f->eax = sys_exec (args[1]);
       break;
     case SYS_WAIT:
-      f->eax = sys_wait (*(int *)(f->esp + 4));
+      f->eax = sys_wait (args[1]);
       break;
     case SYS_CREATE:
-      f->eax = sys_create (*(const char **)(f->esp + 4),
-                           *(unsigned *)(f->esp + 8));
+      f->eax = sys_create (args[1], args[2]);
       break;
     case SYS_REMOVE:
-      f->eax = sys_remove (*(const char **)(f->esp + 4));
+      f->eax = sys_remove (args[1]);
       break;
     case SYS_OPEN:
-      f->eax = sys_open (*(const char **)(f->esp + 4));
+      f->eax = sys_open (args[1]);
       break;
     case SYS_FILESIZE:
-      f->eax = sys_filesize (*(int *)(f->esp + 4));
+      f->eax = sys_filesize (args[1]);
       break;
     case SYS_READ:
-      f->eax = sys_read (*(int *)(f->esp + 4), *(void **)(f->esp + 8),
-                         *(unsigned *)(f->esp + 12));
+      f->eax = sys_read (args[1], args[2], args[3]);
       break;
     case SYS_WRITE:
-      f->eax = sys_write (*(int *)(f->esp + 4), *(void **)(f->esp + 8),
-                          *(unsigned *)(f->esp + 12));
+      f->eax = sys_write (args[1], args[2], args[3]);
       break;
     case SYS_SEEK:
-      sys_seek (*(int *)(f->esp + 4), *(unsigned *)(f->esp + 8));
+      sys_seek (args[1], args[2]);
       break;
     case SYS_TELL:
-      f->eax = sys_tell (*(int *)(f->esp + 4));
+      f->eax = sys_tell (args[1]);
       break;
     case SYS_CLOSE:
-      sys_close (*(int *)(f->esp + 4));
+      sys_close (args[1]);
       break;
     default:
       sys_exit (-1);
