@@ -48,6 +48,19 @@ tests/threads/mlfqs-nice-2.output		\
 tests/threads/mlfqs-nice-10.output		\
 tests/threads/mlfqs-block.output
 
+MLFQS_DEBUG = 				\
+tests/threads/mlfqs-load-1.debug		\
+tests/threads/mlfqs-load-60.debug		\
+tests/threads/mlfqs-load-avg.debug		\
+tests/threads/mlfqs-recent-1.debug		\
+tests/threads/mlfqs-fair-2.debug		\
+tests/threads/mlfqs-fair-20.debug		\
+tests/threads/mlfqs-nice-2.debug		\
+tests/threads/mlfqs-nice-10.debug		\
+tests/threads/mlfqs-block.debug
+
+
 $(MLFQS_OUTPUTS): KERNELFLAGS += -mlfqs
+$(MLFQS_DEBUG): KERNELFLAGS += -mlfqs
 $(MLFQS_OUTPUTS): TIMEOUT = 480
 

@@ -182,19 +182,19 @@ file_tell (struct file *file)
 struct process *
 file_get_owner (struct file *file)
 {
-  return (struct process *)((char *)file + file->fd);
+  return (struct process *)((char *)file - file->fd);
 }
 
 void
 file_set_ownwer (struct file *file)
 {
-  file->fd = (char *)process_current () - (char *)file;
+  file->fd = (char *)file - (char *)process_current ();
 }
 
 struct file *
 file_from_fd (int fd)
 {
-  return (struct file *)((char *)process_current () - fd);
+  return (struct file *)((char *)process_current () + fd);
 }
 
 #endif

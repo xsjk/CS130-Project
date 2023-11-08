@@ -98,9 +98,7 @@ init_process (struct process *this, struct thread *thread)
 struct process *
 new_process (struct thread *t)
 {
-  struct process *p = malloc (sizeof *p);
-  if (p)
-    init_process (p, t);
+  return malloc (sizeof (struct process));
 }
 
 void
@@ -119,15 +117,19 @@ process_execute (const char *cmd)
   struct thread *t = thread_current ();
   struct args *args = parse_args (cmd);
 
+  enum intr_level old_level = intr_disable ();
+
   tid_t tid = thread_create (args->argv[0], PRI_DEFAULT, start_process, args);
 
   if (tid == TID_ERROR)
     goto error;
 
   struct thread *t_child = get_thread (tid);
-  struct process *p_child = t_child->process = new_process (t_child);
+  struct process *p_child = t_child->process;
   if (p_child == NULL)
     goto error;
+
+  intr_set_level (old_level);
 
   // block until the child process load its elf
   sema_down (&p_child->elf_load_sema);
@@ -142,6 +144,7 @@ process_execute (const char *cmd)
   return p_child->pid;
 
 error:
+  intr_set_level (old_level);
 
   free_args (args);
   return TID_ERROR;
@@ -190,7 +193,6 @@ start_process (void *aux)
   struct thread *t = thread_current ();
   struct process *p = t->process;
 
-  // t->process = new_process (t);
   if (t->process == NULL)
     goto error;
 
@@ -259,6 +261,7 @@ process_wait (pid_t pid)
 
   sema_down (&child->wait_sema);
   int exit_status = child->exit_status;
+  delete_process (child);
   return exit_status;
 }
 
@@ -316,7 +319,6 @@ process_exit (void)
       pid_t pid = child->pid;
       e = list_remove (e);
       process_wait (pid);
-      delete_process (child);
     }
 
   p->thread = NULL;

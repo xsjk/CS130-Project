@@ -464,13 +464,9 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   t->pagedir = NULL;
-  t->process = NULL;
+  t->process = t == initial_thread ? t + 1 : new_process (t);
+  init_process (t->process, t);
 
-  if (t == initial_thread)
-    {
-      t->process = t + 1;
-      init_process (t->process, t);
-    }
 #endif
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

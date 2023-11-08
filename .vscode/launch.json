@@ -32,7 +32,6 @@
             "program": "${workspaceFolder}/src/userprog/build/kernel.o",
             "preLaunchTask": "[P2] Run Test in GDB mode",
             "miDebuggerServerAddress": "localhost:1234",
-            "miDebuggerPath": "/usr/local/bin/pintos-gdb",
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/src/userprog/build",
             "environment": [],
