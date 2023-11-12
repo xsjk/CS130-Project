@@ -29,19 +29,66 @@ Yichun Bai <baiych@shanghaitech.edu.cn>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct thread{
+  // add
+  uint32_t *pagedir; /* Page directory. */
+  struct process *process; /* The user process that is running on this thread */
+  struct thread *parent; /* The creator of this thread */
+}
+
+// add struct
+struct process
+{
+  struct thread *thread; /* The thread on which this process is running */
+  pid_t pid; /* process_id */
+  int exit_status; /* Exit status of the thread. */
+
+  struct process *parent; /* Parent thread. */
+
+  struct list files; /* Files opened by this thread*/
+
+  struct list child_list; /* List of child processes. */
+
+  struct list_elem childelem;     /* List element for child_list. */
+  struct semaphore wait_sema;     /* Semaphore for waiting (block parent) */
+  struct semaphore elf_load_sema; /* Semaphore for waiting child to load elf
+                                     (block parent) */
+  struct semaphore exec_sama; /* Block this thread from exiting too early, 
+                              not before "process_exec" of parent process is done */
+  int magic;
+};
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+ Firstly, we call parse_args() to get argc and argv, and save them in the struct args.
+
+ When passing arguments, we calculate the whole offset, including cmd_length, word_align, the address of each string, fixed argv, argc and return address, moving to the intialized stack pointer.
+ Then, copy the data from return address to argument names in order.
+
+ Since we calculate the offset to get the intialized stack pointer and get the right ordered args, we can avoid overflowing and keep the elements in right order.
+
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+  strtok_r() is thread safe, but strtok() isn't. 
+
+  if two threads call strtok() at the same time, they might interfere with each other’s results, leading to race condition, since it uses a static buffer to hold the result of the last call.
+
+  However, strtok_r() requires an additional save_ptr argument to hold the result of the last call. Then, each thread can have its own save_ptr, avoiding interference between threads.
+
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+  1: flexibility: it’s easy to change or replace the shell in user space to provide different command line parsing behaviors.
+
+  2: customization and automation:  users can write shell scripts to automate common tasks or create their own commands. 
 
                  SYSTEM CALLS
                  ============
