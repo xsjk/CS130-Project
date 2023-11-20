@@ -28,7 +28,7 @@ file_open (struct inode *inode)
 #ifdef USERPROG
       file->elem.prev = NULL;
       file->elem.next = NULL;
-      file_set_ownwer (file);
+      file_set_owner (file);
 #endif
       return file;
     }
@@ -186,7 +186,7 @@ file_get_owner (struct file *file)
 }
 
 void
-file_set_ownwer (struct file *file)
+file_set_owner (struct file *file)
 {
   file->fd = (char *)file - (char *)process_current ();
 }

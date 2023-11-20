@@ -103,9 +103,6 @@ sys_halt ()
 static void
 sys_exit (int status)
 {
-  if (has_acquired_filesys ())
-    release_filesys ();
-
   process_current ()->exit_status = status;
   thread_exit ();
   NOT_REACHED ();

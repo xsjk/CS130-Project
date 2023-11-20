@@ -109,10 +109,9 @@ struct thread
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
   struct process
-      *process; /* The user process that is running on this thread */
-#endif
-
+      *process;          /* The user process that is running on this thread */
   struct thread *parent; /* The creator of this thread */
+#endif
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */

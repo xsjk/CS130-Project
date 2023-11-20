@@ -51,7 +51,7 @@ off_t file_length (struct file *);
 struct process *file_get_owner (struct file *file);
 
 /* set current thread as the owner of a file */
-void file_set_ownwer (struct file *file);
+void file_set_owner (struct file *file);
 
 /* get the file owned by current thread with fd */
 struct file *file_from_fd (int fd);

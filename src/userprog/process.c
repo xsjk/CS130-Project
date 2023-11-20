@@ -132,17 +132,19 @@ process_execute (const char *cmd)
   // block until the child process load its elf
   sema_down (&p_child->elf_load_sema);
 
-  // allow the child process to exit
-  sema_up (&p_child->exec_sama);
-
   if (p_child->thread == NULL)
     // child's elf is not loaded due to some error e.g. file not found
     goto error;
+
+  // allow the child process to exit
+  sema_up (&p_child->exec_sama);
 
   return p_child->pid;
 
 error:
   intr_set_level (old_level);
+  // allow the child process to exit
+  sema_up (&p_child->exec_sama);
 
   free_args (args);
   return TID_ERROR;
