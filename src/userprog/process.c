@@ -19,6 +19,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef VM
+#include "vm/frame.h"
+#endif
+
 #define PROCESS_MAGIC 0x636f7270
 
 static thread_func start_process NO_RETURN;
