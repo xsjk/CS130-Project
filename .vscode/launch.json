@@ -55,15 +55,14 @@
       }
     },
     {
-      "name": "[P3] Debug page-parallel",
+      "name": "[P3] Debug a Test",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/src/vm/build/kernel.o",
-      "preLaunchTask": "[P3] Run child-linear",
+      "preLaunchTask": "[P3] Run Test in GDB mode",
       "miDebuggerServerAddress": "localhost:1234",
-      "miDebuggerPath": "/usr/local/bin/pintos-gdb",
       "stopAtEntry": false,
-      "cwd": "${workspaceFolder}/src",
+      "cwd": "${workspaceFolder}/src/vm/build",
       "environment": [],
       "externalConsole": false,
       "MIMode": "gdb",
@@ -74,12 +73,7 @@
           "ignoreFailures": true
         },
         {
-          "text": "loadusersymbols ${workspaceFolder}/src/vm/build/tests/vm/child-linear",
-          "description": "Import user program",
-          "ignoreFailures": false
-        },
-        {
-          "text": "loadusersymbols ${workspaceFolder}/src/vm/build/tests/vm/page-parallel",
+          "text": "source ${workspaceFolder}/src/vm/build/.loadsymbols",
           "description": "Import user program",
           "ignoreFailures": false
         }
