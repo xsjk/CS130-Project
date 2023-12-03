@@ -21,6 +21,7 @@
 
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/page.h"
 #endif
 
 #define PROCESS_MAGIC 0x636f7270
@@ -333,6 +334,10 @@ process_exit (void)
   if (p->parent)
     sema_up (&p->wait_sema);
 
+#ifdef VM
+  page_destroy (t->spt);
+#endif
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = t->pagedir;
@@ -449,6 +454,12 @@ load_entry (struct file *file, void (**eip) (void), void **esp)
   bool success = false;
   int i;
   char *save_ptr;
+
+#ifdef VM
+  t->spt = create_page_table ();
+  if (t->spt == NULL)
+    goto done;
+#endif
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -673,14 +684,23 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
+#ifdef VM
+  kpage = frame_alloc (PAL_USER | PAL_ZERO, ((uint8_t *)PHYS_BASE - PGSIZE));
+#else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+#endif
+
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
+#ifdef VM
+        frame_free (kpage);
+#else
         palloc_free_page (kpage);
+#endif
     }
   return success;
 }
@@ -701,6 +721,17 @@ install_page (void *upage, void *kpage, bool writable)
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
+#ifdef VM
+  // add new SPTE to spt
+  struct spte *spte = malloc (sizeof (struct spte));
+  if (spte == NULL)
+    return false;
+  spte->upage = upage;
+  spte->value = kpage;
+  spte->type = SPTE_FRAME;
+  spte->writable = writable;
+  // hash_insert (t->spt, &spte->hash_elem);
+#endif
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }

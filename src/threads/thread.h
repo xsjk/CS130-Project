@@ -105,6 +105,10 @@ struct thread
       *process; /* The user process that is running on this thread */
 #endif
 
+#ifdef VM
+  struct hash *spt; /* Supplemental page table */
+#endif
+
   struct thread *parent; /* The creator of this thread */
 
   /* Owned by thread.c. */
