@@ -1,5 +1,6 @@
 #include "frame.h"
 
+#include "../threads/malloc.h"
 #include "../threads/synch.h"
 #include "userprog/pagedir.h"
 

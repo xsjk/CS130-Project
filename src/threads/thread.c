@@ -14,6 +14,9 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#endif
 
 static fixed_point load_avg;
 

@@ -30,4 +30,6 @@ struct spte *find_page (struct hash *page_table, void *upage);
 struct hash *create_page_table ();
 void page_destroy (struct hash *page_table);
 
+bool page_fault_handler (void *fault_addr, void *esp, bool write);
+
 #endif /* vm/supplemental_page_table.h */

@@ -113,6 +113,10 @@ struct thread
   struct thread *parent; /* The creator of this thread */
 #endif
 
+#ifdef VM
+  struct hash *spt; /* Supplemental page table */
+#endif
+
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
 

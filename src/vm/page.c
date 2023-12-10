@@ -1,7 +1,12 @@
 #include "page.h"
 #include "frame.h"
 
+#include "../threads/malloc.h"
+#include "../threads/vaddr.h"
 #include "../userprog/pagedir.h"
+#include "filesys/off_t.h"
+
+#define STACK_MAX (1 << 23) // 8MB
 
 static struct lock page_table_lock; // lock for supplemental page table
 
@@ -77,4 +82,46 @@ page_destroy (struct hash *page_table)
   lock_acquire (&page_table_lock);
   hash_destroy (page_table, page_destroy_action);
   lock_release (&page_table_lock);
+}
+
+bool
+page_fault_handler (void *fault_addr, void *esp, bool write)
+{
+  void *upage = pg_round_down (fault_addr);
+  struct thread *t = thread_current ();
+  bool success = true;
+
+  pt_lock_acquire ();
+  struct spte *spte = find_page (thread_current ()->spt, fault_addr);
+  void *frame;
+
+  // stack growth
+  if (upage >= PHYS_BASE - STACK_MAX)
+    {
+      if (fault_addr >= esp - 32)
+        {
+          if (spte == NULL)
+            {
+              frame = frame_alloc (0, upage);
+              if (frame == NULL)
+                success = false;
+              else
+                {
+                  // add new spte
+                  spte = malloc (sizeof (struct spte));
+                  spte->type = SPTE_FRAME;
+                  spte->upage = upage;
+                  spte->value = frame;
+                  spte->writable = true;
+                  hash_insert (t->spt, &spte->hash_elem);
+                }
+            }
+        }
+      else
+        {
+          success = false;
+        }
+    }
+  pt_lock_release ();
+  return success;
 }
