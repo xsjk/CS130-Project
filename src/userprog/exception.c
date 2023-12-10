@@ -2,6 +2,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/gdt.h"
+#include "vm/page.h"
 #include <inttypes.h>
 #include <stdio.h>
 
@@ -148,6 +149,14 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
+  if (not_present && page_fault_handler (fault_addr, f->esp, write))
+    return;
+  else
+    {
+      /// TODO exit with -1
+    }
+#endif
   if (!user)
     {
       f->eip = f->eax;

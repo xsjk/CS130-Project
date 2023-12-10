@@ -648,8 +648,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
+/* Get a page of memory. */
+#ifdef VM
+      uint8_t *kpage = frame_alloc (PAL_USER, upage);
+#else
       uint8_t *kpage = palloc_get_page (PAL_USER);
+#endif
       if (kpage == NULL)
         return false;
 
@@ -662,6 +666,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
+      /// TODO: deal with frame_alloc
       if (!install_page (upage, kpage, writable))
         {
           palloc_free_page (kpage);
@@ -730,7 +735,7 @@ install_page (void *upage, void *kpage, bool writable)
   spte->value = kpage;
   spte->type = SPTE_FRAME;
   spte->writable = writable;
-  // hash_insert (t->spt, &spte->hash_elem);
+  hash_insert (t->spt, &spte->hash_elem);
 #endif
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
