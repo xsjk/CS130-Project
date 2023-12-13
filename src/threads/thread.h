@@ -106,7 +106,7 @@ struct thread
 #endif
 
 #ifdef VM
-  struct hash *spt; /* Supplemental page table */
+  struct hash *frame_table; /* Supplemental page table */
 #endif
 
   struct thread *parent; /* The creator of this thread */

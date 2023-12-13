@@ -12,28 +12,13 @@ static struct lock page_table_lock; // lock for supplemental page table
 static void
 page_destroy_action (struct hash_elem *e, void *aux)
 {
-  struct spte *spte = hash_entry (e, struct spte, hash_elem);
-  if (spte->type == SPTE_FRAME)
+  struct fte *fte = hash_entry (e, struct fte, thread_hash_elem);
+  if (fte->type == SPTE_FRAME)
     {
-      frame_free (spte->value);
-      pagedir_clear_page (thread_current ()->pagedir, spte->upage);
+      frame_free (fte->value);
+      pagedir_clear_page (thread_current ()->pagedir, fte->upage);
     }
-  free (spte);
-}
-
-static unsigned
-page_hash (const struct hash_elem *e, void *aux)
-{
-  const struct spte *spte = hash_entry (e, struct spte, hash_elem);
-  return hash_bytes (&spte->upage, sizeof spte->upage);
-}
-
-static bool
-page_less (const struct hash_elem *a, const struct hash_elem *b, void *aux)
-{
-  const struct spte *spte_a = hash_entry (a, struct spte, hash_elem);
-  const struct spte *spte_b = hash_entry (b, struct spte, hash_elem);
-  return spte_a->upage < spte_b->upage;
+  free (fte);
 }
 
 void
@@ -54,24 +39,45 @@ pt_lock_release ()
   lock_release (&page_table_lock);
 }
 
-struct spte *
-find_page (struct hash *page_table, void *upage)
+struct fte *
+fte_create (void *upage, void *value, bool writable)
 {
-  struct spte spte;
-  spte.upage = upage;
-  struct hash_elem *e = hash_find (page_table, &spte.hash_elem);
-  if (e != NULL)
-    return hash_entry (e, struct spte, hash_elem);
-  return NULL;
+  bool success = true;
+  // malloc fte
+  struct fte *fte = malloc (sizeof (struct fte));
+  if (fte == NULL)
+    return NULL;
+  fte->upage = upage;
+  fte->value = value;
+  fte->writable = writable;
+  // try create frame
+  // success = install_page (upage, value, writable);
+  if (success)
+    fte->type = SPTE_FRAME;
+  else
+    {
+      // evict a frame
+      frame_evict ();
+      // try install again
+      // install_page (upage, value, writable);
+    }
+  return fte;
+}
+
+void
+fte_destroy (struct hash *page_table, struct fte *fte)
+{
+  hash_delete (page_table, &fte->thread_hash_elem);
+  free (fte);
 }
 
 struct hash *
-create_page_table ()
+frame_table_create ()
 {
   struct hash *page_table = malloc (sizeof (struct hash));
   if (page_table == NULL)
     return NULL;
-  hash_init (page_table, page_hash, page_less, NULL);
+  hash_init (page_table, frame_hash, frame_less, NULL);
   return page_table;
 }
 
@@ -91,7 +97,8 @@ page_fault_handler (void *fault_addr, void *esp, bool write)
   bool success = true;
 
   pt_lock_acquire ();
-  struct spte *spte = find_page (thread_current ()->spt, fault_addr);
+  struct fte *fte
+      = frame_table_find (thread_current ()->frame_table, fault_addr);
   void *frame;
 
   // stack growth
@@ -99,20 +106,20 @@ page_fault_handler (void *fault_addr, void *esp, bool write)
     {
       if (fault_addr >= esp - 32)
         {
-          if (spte == NULL)
+          if (fte == NULL)
             {
               frame = frame_alloc (0, upage);
               if (frame == NULL)
                 success = false;
               else
                 {
-                  // add new spte
-                  spte = malloc (sizeof (struct spte));
-                  spte->type = SPTE_FRAME;
-                  spte->upage = upage;
-                  spte->value = frame;
-                  spte->writable = true;
-                  hash_insert (t->spt, &spte->hash_elem);
+                  // add new fte
+                  fte = malloc (sizeof (struct fte));
+                  fte->type = SPTE_FRAME;
+                  fte->upage = upage;
+                  fte->value = frame;
+                  fte->writable = true;
+                  hash_insert (t->frame_table, &fte->thread_hash_elem);
                 }
             }
         }

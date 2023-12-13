@@ -5,8 +5,8 @@
 
 static struct lock frame_table_lock; // lock for frame table sychronization
 static struct hash frame_table;      // frame table
-static struct frame_table_entry *cur_frame; // current position for clock list
-static struct list clock_list;              // a cycle list for clock algorithm
+static struct fte *cur_frame;        // current position for clock list
+static struct list clock_list;       // a cycle list for clock algorithm
 
 static void
 clock_list_next (void)
@@ -14,11 +14,10 @@ clock_list_next (void)
   ASSERT (cur_frame != NULL);
   /* check if tail */
   if (list_next (&cur_frame->list_elem) == list_tail (&clock_list))
-    cur_frame = list_entry (list_begin (&clock_list), struct frame_table_entry,
-                            list_elem);
+    cur_frame = list_entry (list_begin (&clock_list), struct fte, list_elem);
   else
-    cur_frame = list_entry (list_next (&cur_frame->list_elem),
-                            struct frame_table_entry, list_elem);
+    cur_frame = list_entry (list_next (&cur_frame->list_elem), struct fte,
+                            list_elem);
 }
 
 static void
@@ -32,38 +31,46 @@ replace_by_clock (void)
                             false);
       clock_list_next ();
     }
-  struct frame_table_entry *fte = cur_frame;
-  void *frame = fte->frame;
+  struct fte *fte = cur_frame;
+  void *frame = fte->value;
 }
 
-static unsigned
+unsigned
 frame_hash (const struct hash_elem *e, void *aux)
 {
-  const struct frame_table_entry *fte
-      = hash_entry (e, struct frame_table_entry, hash_elem);
-  return hash_bytes (&fte->frame, sizeof fte->frame);
+  const struct fte *fte = hash_entry (e, struct fte, all_hash_elem);
+  return hash_bytes (&fte->value, sizeof fte->value);
 }
 
-static bool
+bool
 frame_less (const struct hash_elem *a, const struct hash_elem *b, void *aux)
 {
-  const struct frame_table_entry *fte_a
-      = hash_entry (a, struct frame_table_entry, hash_elem);
-  const struct frame_table_entry *fte_b
-      = hash_entry (b, struct frame_table_entry, hash_elem);
-  return fte_a->frame < fte_b->frame;
+  const struct fte *fte_a = hash_entry (a, struct fte, all_hash_elem);
+  const struct fte *fte_b = hash_entry (b, struct fte, all_hash_elem);
+  return fte_a->value < fte_b->value;
 }
 
-struct frame_table_entry *
-find_frame (void *frame)
+struct fte *
+find_frame_from_upage (void *frame)
 {
-  struct frame_table_entry fte;
-  fte.frame = frame;
-  struct hash_elem *e = hash_find (&frame_table, &fte.hash_elem);
+  struct fte fte;
+  fte.value = frame;
+  struct hash_elem *e = hash_find (&frame_table, &fte.all_hash_elem);
   if (e != NULL)
-    return hash_entry (e, struct frame_table_entry, hash_elem);
+    return hash_entry (e, struct fte, all_hash_elem);
   else
     return NULL;
+}
+
+struct fte *
+frame_table_find (struct hash *page_table, void *upage)
+{
+  struct fte fte;
+  fte.upage = upage;
+  struct hash_elem *e = hash_find (page_table, &fte.thread_hash_elem);
+  if (e != NULL)
+    return hash_entry (e, struct fte, thread_hash_elem);
+  return NULL;
 }
 
 void
@@ -92,7 +99,7 @@ frame_evict (void)
     }
 
   pagedir_clear_page (cur_frame->owner->pagedir, cur_frame->upage);
-  hash_delete (&frame_table, &cur_frame->hash_elem);
+  hash_delete (&frame_table, &cur_frame->all_hash_elem);
   free (cur_frame);
 
   lock_release (&frame_table_lock);
@@ -116,24 +123,23 @@ frame_alloc (enum palloc_flags flags, void *upage)
       //   PANIC ("No free frame");
     }
 
-  struct frame_table_entry *fte
-      = (struct frame_table_entry *)malloc (sizeof (struct frame_table_entry));
-  fte->frame = frame;
+  struct fte *fte = (struct fte *)malloc (sizeof (struct fte));
+  fte->value = frame;
   fte->owner = thread_current ();
   fte->upage = upage;
-  hash_insert (&frame_table, &fte->hash_elem);
+  hash_insert (&frame_table, &fte->all_hash_elem);
   lock_release (&frame_table_lock);
   return frame;
 }
 
 void
-frame_free (void *frame)
+frame_free (void *page)
 {
   lock_acquire (&frame_table_lock);
-  struct frame_table_entry *fte = find_frame (frame);
+  struct fte *fte = find_frame_from_upage (page);
   ASSERT (fte != NULL);
-  hash_delete (&frame_table, &fte->hash_elem);
+  hash_delete (&frame_table, &fte->all_hash_elem);
   free (fte);
-  palloc_free_page (frame);
+  palloc_free_page (page);
   lock_release (&frame_table_lock);
 }

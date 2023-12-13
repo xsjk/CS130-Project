@@ -335,7 +335,7 @@ process_exit (void)
     sema_up (&p->wait_sema);
 
 #ifdef VM
-  page_destroy (t->spt);
+  page_destroy (t->frame_table);
 #endif
 
   /* Destroy the current process's page directory and switch back
@@ -456,8 +456,8 @@ load_entry (struct file *file, void (**eip) (void), void **esp)
   char *save_ptr;
 
 #ifdef VM
-  t->spt = create_page_table ();
-  if (t->spt == NULL)
+  t->frame_table = frame_table_create ();
+  if (t->frame_table == NULL)
     goto done;
 #endif
 
@@ -726,17 +726,6 @@ install_page (void *upage, void *kpage, bool writable)
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
-#ifdef VM
-  // add new SPTE to spt
-  struct spte *spte = malloc (sizeof (struct spte));
-  if (spte == NULL)
-    return false;
-  spte->upage = upage;
-  spte->value = kpage;
-  spte->type = SPTE_FRAME;
-  spte->writable = writable;
-  hash_insert (t->spt, &spte->hash_elem);
-#endif
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
