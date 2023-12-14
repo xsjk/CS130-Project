@@ -17,11 +17,8 @@ void pt_lock_init ();
 void pt_lock_acquire ();
 void pt_lock_release ();
 
-struct hash *frame_table_create ();
-void page_destroy (struct hash *page_table);
-
-struct fte *fte_create (void *upage, void *value, bool writable);
-void fte_destroy (struct hash *page_table, struct fte *spte);
+struct fte *fte_create (void *upage, bool writable, enum palloc_flags flags);
+void fte_destroy (struct fte *fte);
 
 bool page_fault_handler (void *fault_addr, void *esp, bool write);
 

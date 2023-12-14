@@ -47,4 +47,5 @@ struct process *get_process (pid_t);
 
 bool is_process (struct process *);
 
+extern bool install_page (void *upage, void *kpage, bool writable);
 #endif /* userprog/process.h */

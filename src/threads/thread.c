@@ -198,6 +198,10 @@ thread_create (const char *name, int priority, thread_func *function,
   /* Add to run queue. */
   thread_unblock (t);
 
+#ifdef VM
+  hash_init (&t->frame_table, upage_hash, upage_less, NULL);
+#endif
+
   return tid;
 }
 
@@ -471,6 +475,12 @@ init_thread (struct thread *t, const char *name, int priority)
   init_process (t->process, t);
 
 #endif
+
+#ifdef VM
+  t->esp = NULL;
+  t->sys_flag = false;
+#endif
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

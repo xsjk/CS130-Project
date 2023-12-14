@@ -148,14 +148,15 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
+  struct thread *t = thread_current ();
 #ifdef VM
-  if (not_present && page_fault_handler (fault_addr, f->esp, write))
+  // if (not_present
+  //     && page_fault_handler (fault_addr,
+  //                            user ? f->esp : thread_current ()->esp, write))
+
+  if (not_present && user && page_fault_handler (fault_addr, f->esp, write))
     return;
-  else
-    {
-      /// TODO exit with -1
-    }
+
 #endif
   if (!user)
     {

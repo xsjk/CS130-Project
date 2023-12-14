@@ -5,6 +5,8 @@
 #include "threads/thread.h"
 #include <hash.h>
 
+extern struct hash all_frame_table; // frame table
+
 enum frame_type
 {
   SPTE_FILE,  // file
@@ -17,8 +19,17 @@ struct fte
 {
   struct thread *owner; // pointer to the owner thread
 
-  void *upage;          // user page
-  void *value;          // phys_addr or swap_index or file_offset
+  void *upage; // user page
+  union
+  {
+    void *phys_addr; // phys_addr
+    struct
+    {
+      uint32_t file_offset;
+      struct file *file;
+    };
+  };
+
   enum frame_type type; // type of the supplemental page table entry
   bool writable;        // writable or not
 
@@ -32,12 +43,17 @@ unsigned frame_hash (const struct hash_elem *p_, void *aux); // hash function
 bool frame_less (const struct hash_elem *a_, const struct hash_elem *b_,
                  void *aux); // less function
 
+unsigned upage_hash (const struct hash_elem *p_, void *aux); // hash function
+bool upage_less (const struct hash_elem *a_, const struct hash_elem *b_,
+                 void *aux); // less function
+
 struct fte *find_frame_from_upage (void *upage); // find a frame
 struct fte *frame_table_find (struct hash *page_table, void *upage);
 
 void frame_init (void);  // initialize frame table
 void frame_evict (void); // evict a frame
-void *frame_alloc (enum palloc_flags flags, void *upage); // allocate a frame
-void frame_free (void *page);                             // free a frame
+// void *frame_alloc (enum palloc_flags flags, void *upage); // allocate a
+// frame void frame_free (void *page);                             // free a
+// frame
 
 #endif /* vm/frame.h */

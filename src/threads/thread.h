@@ -3,6 +3,7 @@
 
 #include "synch.h"
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 
@@ -106,7 +107,10 @@ struct thread
 #endif
 
 #ifdef VM
-  struct hash *frame_table; /* Supplemental page table */
+  struct hash frame_table; /* Supplemental page table */
+  void *esp;               /* save sp when calling syscall */
+  bool sys_flag;           /* if the page fault is caused by syscall */
+
 #endif
 
   struct thread *parent; /* The creator of this thread */

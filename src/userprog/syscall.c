@@ -297,6 +297,8 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   user_access_validate (f->esp, sizeof (int) * 4);
+  thread_current ()->esp = f->esp;
+  thread_current ()->sys_flag = true;
 
   switch (*(int *)f->esp)
     {
