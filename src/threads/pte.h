@@ -17,6 +17,17 @@
    +----------------------+----------------------+----------------------+
 */
 
+union addr_t
+{
+  struct
+  {
+    uint32_t offset : 12;
+    uint32_t pt_idx : 10;
+    uint32_t pd_idx : 10;
+  };
+  void *ptr;
+};
+
 /* Page table index (bits 12:21). */
 #define PTSHIFT PGBITS                   /* First page table bit. */
 #define PTBITS 10                        /* Number of page table bits. */
@@ -70,6 +81,23 @@ pd_no (const void *va)
 #define PTE_U 0x4            /* 1=user/kernel, 0=kernel only. */
 #define PTE_A 0x20           /* 1=accessed, 0=not acccessed. */
 #define PTE_D 0x40           /* 1=dirty, 0=not dirty (PTEs only). */
+
+union pte_t
+{
+  struct
+  {
+    uint32_t present : 1;
+    uint32_t writable : 1;
+    uint32_t user : 1;
+    uint32_t _reserved_0 : 2;
+    uint32_t accessed : 1;
+    uint32_t dirty : 1;
+    uint32_t _reserved_1 : 2;
+    uint32_t available : 3;
+    uint32_t page : 20;
+  };
+  uint32_t val;
+};
 
 /* Returns a PDE that points to page table PT. */
 static inline uint32_t

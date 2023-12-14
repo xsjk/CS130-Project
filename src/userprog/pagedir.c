@@ -82,7 +82,7 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
 
   /* Return the page table entry. */
   pt = pde_get_pt (*pde);
-  return &pt[pt_no (vaddr)];
+  return pt + pt_no (vaddr);
 }
 
 /* Adds a mapping in page directory PD from user virtual page

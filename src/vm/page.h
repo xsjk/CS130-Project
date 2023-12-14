@@ -20,6 +20,6 @@ void pt_lock_release ();
 struct fte *fte_create (void *upage, bool writable, enum palloc_flags flags);
 void fte_destroy (struct fte *fte);
 
-bool page_fault_handler (void *fault_addr, void *esp, bool write);
+bool user_stack_grouth (void *fault_addr, void *esp);
 
 #endif /* vm/supplemental_page_table.h */

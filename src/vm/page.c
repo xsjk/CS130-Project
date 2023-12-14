@@ -72,22 +72,22 @@ fte_destroy (struct fte *fte)
 }
 
 bool
-page_fault_handler (void *fault_addr, void *esp, bool write)
+user_stack_grouth (void *fault_addr, void *esp)
 {
   void *upage = pg_round_down (fault_addr);
   struct thread *t = thread_current ();
+  bool writable = true;
   bool success = true;
 
-  if (upage >= PHYS_BASE - STACK_MAX && fault_addr >= esp - 32)
+  if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE
+      && upage >= PHYS_BASE - STACK_MAX)
     {
       struct fte *fte
           = frame_table_find (&thread_current ()->frame_table, fault_addr);
       if (fte == NULL)
         {
-          fte = fte_create (upage, write, PAL_USER);
-          success = install_page (upage, fte->phys_addr, write);
-          // esp-- ?
-          esp -= sizeof (void *);
+          fte = fte_create (upage, writable, PAL_USER);
+          success = install_page (upage, fte->phys_addr, writable);
         }
     }
   else

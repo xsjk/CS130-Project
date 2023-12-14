@@ -1,4 +1,5 @@
 #include "userprog/exception.h"
+#include "syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/gdt.h"
@@ -123,6 +124,15 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f)
 {
+  bool is_try_load = f->eip == try_load + 24;
+  bool is_try_store = f->eip == try_store + 25; // TODO: verify this
+  if (is_try_load || is_try_store)
+    {
+      f->eip = f->eax;
+      f->eax = 0xffffffff;
+      return;
+    }
+
   bool not_present; /* True: not-present page, false: writing r/o page. */
   bool write;       /* True: access was write, false: access was read. */
   bool user;        /* True: access by user, false: access by kernel. */
@@ -148,22 +158,32 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  struct thread *t = thread_current ();
+
 #ifdef VM
-  // if (not_present
-  //     && page_fault_handler (fault_addr,
-  //                            user ? f->esp : thread_current ()->esp, write))
+  struct thread *t = thread_current ();
+  bool in_syscall = t->sys_flag;
+  if (in_syscall)
+    ASSERT (!user);
 
-  if (not_present && user && page_fault_handler (fault_addr, f->esp, write))
-    return;
+  if (not_present && (user || in_syscall))
+    // access to not-present page
+    // it might be a stack growth
+    if (user_stack_grouth (fault_addr, user ? f->esp : t->esp))
+      return;
 
-#endif
-  if (!user)
+  if (in_syscall)
+    // if the error still exists and is in syscall,
+    // then it's a syscall execution error
     {
-      f->eip = f->eax;
-      f->eax = 0xffffffff;
+      if (has_acquired_filesys ()) // was acquired by syscall
+        release_filesys (); // release the filesys lock so that the process
+                            // can exit normally with
+                            // "process_close_all_files"
+      thread_exit ();
       return;
     }
+
+#endif
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

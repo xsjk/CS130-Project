@@ -19,7 +19,7 @@
    UADDR must be below PHYS_BASE.
    Returns the byte value if successful, -1 if a segfault
    occurred. */
-static int
+int
 try_load (const uint8_t __user *uaddr)
 {
   int result;
@@ -34,7 +34,7 @@ try_load (const uint8_t __user *uaddr)
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
-static bool
+bool
 try_store (uint8_t __user *udst, uint8_t byte)
 {
   int error_code;
@@ -250,8 +250,6 @@ sys_close (int fd)
 int
 sys_read (int fd, uint8_t __user *buffer, unsigned size)
 {
-  user_access_validate (buffer, size);
-
   // stdin
   if (fd == STDIN_FILENO)
     {
@@ -272,8 +270,6 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
-  user_access_validate (buffer, size);
-
   // stdout
   if (fd == STDOUT_FILENO)
     {
@@ -347,6 +343,9 @@ syscall_handler (struct intr_frame *f)
     default:
       sys_exit (-1);
     }
+
+  thread_current ()->esp = NULL;
+  thread_current ()->sys_flag = false;
 }
 
 void
