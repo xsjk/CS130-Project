@@ -127,11 +127,6 @@ pagedir_get_page (uint32_t *pd, const void *uaddr)
 {
   uint32_t *pte;
 
-  /// TODO: remove this!!!
-  bool temp = is_user_vaddr (uaddr);
-  if (temp)
-    ;
-
   ASSERT (is_user_vaddr (uaddr));
 
   pte = lookup_page (pd, uaddr, false);

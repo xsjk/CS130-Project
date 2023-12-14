@@ -1,5 +1,6 @@
 #ifndef VM_FRAME_H
 #define VM_FRAME_H
+#include "swap.h"
 
 #include "threads/palloc.h"
 #include "threads/thread.h"
@@ -22,12 +23,13 @@ struct fte
   void *upage; // user page
   union
   {
-    void *phys_addr; // phys_addr
-    struct
+    void *phys_addr; // frame
+    struct           // file
     {
       uint32_t file_offset;
       struct file *file;
     };
+    block_sector_t swap_index; // swap
   };
 
   enum frame_type type; // type of the supplemental page table entry
@@ -36,7 +38,7 @@ struct fte
   struct hash_elem thread_hash_elem; // hash element for frame table
   struct hash_elem all_hash_elem;    // hash element for frame table
 
-  struct list_elem list_elem; // list element for clock algorithm
+  struct list_elem clock_list_elem; // list element for clock algorithm
 };
 
 unsigned frame_hash (const struct hash_elem *p_, void *aux); // hash function
@@ -52,8 +54,7 @@ struct fte *frame_table_find (struct hash *page_table, void *upage);
 
 void frame_init (void);  // initialize frame table
 void frame_evict (void); // evict a frame
-// void *frame_alloc (enum palloc_flags flags, void *upage); // allocate a
-// frame void frame_free (void *page);                             // free a
-// frame
+struct fte *frame_install (void *upage, bool writable, enum palloc_flags flags,
+                           block_sector_t swap_index); // install a frame
 
 #endif /* vm/frame.h */

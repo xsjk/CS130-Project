@@ -1,5 +1,6 @@
 #include "page.h"
 #include "frame.h"
+#include "swap.h"
 
 #include "../threads/vaddr.h"
 #include "../userprog/pagedir.h"
@@ -79,21 +80,32 @@ user_stack_grouth (void *fault_addr, void *esp)
   bool writable = true;
   bool success = true;
 
-  if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE
-      && upage >= PHYS_BASE - STACK_MAX)
+  struct fte *fte = frame_table_find (&thread_current ()->frame_table, upage);
+
+  if (fte == NULL)
     {
-      struct fte *fte
-          = frame_table_find (&thread_current ()->frame_table, fault_addr);
-      if (fte == NULL)
+      // try stack growth
+      if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE
+          && upage >= PHYS_BASE - STACK_MAX)
         {
-          fte = fte_create (upage, writable, PAL_USER);
-          success = install_page (upage, fte->phys_addr, writable);
+          frame_install (upage, writable, PAL_USER, -1);
         }
     }
   else
     {
-      success = false;
+      switch (fte->type)
+        {
+        case SPTE_FRAME:
+          PANIC (" frame should not exist, otherwise won't raise page fault.");
+          break;
+        case SPTE_SWAP:
+          {
+            /* read from swap to new frame & change type to frame*/
+            block_sector_t swap_index = fte->swap_index;
+            fte = frame_install (upage, fte->writable, PAL_USER, swap_index);
+          }
+          break;
+        }
     }
-
   return success;
 }

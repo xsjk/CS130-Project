@@ -7,7 +7,8 @@
     "pintos-mkdisk": "perl",
     "pintos-set-cmdline": "perl",
     "*.ck": "perl",
-    "*.h": "c"
+    "*.h": "c",
+    "*.inc": "c"
   },
   "C_Cpp.formatting": "clangFormat",
   "C_Cpp.clang_format_fallbackStyle": "GNU",

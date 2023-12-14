@@ -1,6 +1,7 @@
 #include "frame.h"
 
 #include "../threads/synch.h"
+#include "../userprog/process.h"
 #include "userprog/pagedir.h"
 
 static struct lock frame_table_lock; // lock for frame table sychronization
@@ -13,26 +14,32 @@ clock_list_next (void)
 {
   ASSERT (cur_frame != NULL);
   /* check if tail */
-  if (list_next (&cur_frame->list_elem) == list_tail (&clock_list))
-    cur_frame = list_entry (list_begin (&clock_list), struct fte, list_elem);
+  if (list_next (&cur_frame->clock_list_elem) == list_tail (&clock_list))
+    cur_frame
+        = list_entry (list_begin (&clock_list), struct fte, clock_list_elem);
   else
-    cur_frame = list_entry (list_next (&cur_frame->list_elem), struct fte,
-                            list_elem);
+    cur_frame = list_entry (list_next (&cur_frame->clock_list_elem),
+                            struct fte, clock_list_elem);
+  ASSERT (cur_frame->phys_addr != NULL)
 }
 
 static void
 replace_by_clock (void)
 {
+  // initialize when start replacement
+  if (cur_frame == NULL)
+    cur_frame
+        = list_entry (list_begin (&clock_list), struct fte, clock_list_elem);
   ASSERT (cur_frame != NULL);
+
   while (pagedir_is_accessed (cur_frame->owner->pagedir, cur_frame->upage))
     {
+      ASSERT (cur_frame->phys_addr != NULL)
       /* if accessed, set accessed to false and move to next */
       pagedir_set_accessed (cur_frame->owner->pagedir, cur_frame->upage,
                             false);
       clock_list_next ();
     }
-  struct fte *fte = cur_frame;
-  void *frame = fte->phys_addr;
 }
 
 unsigned
@@ -53,21 +60,22 @@ frame_less (const struct hash_elem *a, const struct hash_elem *b, void *aux)
 unsigned
 upage_hash (const struct hash_elem *e, void *aux)
 {
-  const struct fte *fte = hash_entry (e, struct fte, all_hash_elem);
+  const struct fte *fte = hash_entry (e, struct fte, thread_hash_elem);
   return hash_bytes (&fte->upage, sizeof fte->upage);
 }
 
 bool
 upage_less (const struct hash_elem *a, const struct hash_elem *b, void *aux)
 {
-  const struct fte *fte_a = hash_entry (a, struct fte, all_hash_elem);
-  const struct fte *fte_b = hash_entry (b, struct fte, all_hash_elem);
+  const struct fte *fte_a = hash_entry (a, struct fte, thread_hash_elem);
+  const struct fte *fte_b = hash_entry (b, struct fte, thread_hash_elem);
   return fte_a->upage < fte_b->upage;
 }
 
 struct fte *
 find_frame_from_upage (void *frame)
 {
+  ASSERT (frame == NULL);
   struct fte fte;
   fte.phys_addr = frame;
   struct hash_elem *e = hash_find (&all_frame_table, &fte.all_hash_elem);
@@ -103,58 +111,86 @@ frame_evict (void)
 {
   lock_acquire (&frame_table_lock);
 
-  replace_by_clock ();
+  replace_by_clock (); // set cur_frame to the frame to be evicted
 
-  /* write back to swap */
-  if (pagedir_is_dirty (cur_frame->owner->pagedir, cur_frame->upage))
-    {
-      /// TODO: write back to swap
-      // swap_write (cur_frame->frame, cur_frame->upage);
-      pagedir_set_dirty (cur_frame->owner->pagedir, cur_frame->upage, false);
-    }
+  ASSERT (cur_frame->phys_addr != NULL)
 
+  void *kpage = cur_frame->phys_addr;
+
+  /* write to swap & change the type */
+  cur_frame->swap_index = swap_write (cur_frame->upage);
+
+  cur_frame->type = SPTE_SWAP;
+
+  palloc_free_page (kpage);
+  pagedir_set_dirty (cur_frame->owner->pagedir, cur_frame->upage, true);
   pagedir_clear_page (cur_frame->owner->pagedir, cur_frame->upage);
-  hash_delete (&all_frame_table, &cur_frame->all_hash_elem);
-  free (cur_frame);
+
+  // hash_delete (&all_frame_table, &cur_frame->all_hash_elem);
+  struct fte *last_frame = cur_frame;
+  // free (cur_frame);
+  clock_list_next ();
+  list_remove (&last_frame->clock_list_elem);
 
   lock_release (&frame_table_lock);
 }
 
-// void *
-// frame_alloc (enum palloc_flags flags, void *upage)
-// {
-//   lock_acquire (&frame_table_lock);
-//   void *frame = palloc_get_page (flags);
+/**
+ * Install a frame
+ * @param upage user page
+ * @param writable writable or not
+ * @param flags flags for palloc_get_page
+ * @param swap_index swap index for restore, if -1, then not restore
+ * @return fte if success, NULL if failed
+ */
+struct fte *
+frame_install (void *upage, bool writable, enum palloc_flags flags,
+               block_sector_t swap_index)
+{
+  bool success = true;
 
-//   /* No free frame, evict a frame and try again */
+  // malloc fte
+  struct fte *fte = malloc (sizeof (struct fte));
+  if (fte == NULL)
+    return NULL;
+  fte->upage = upage;
+  fte->writable = writable;
+  fte->owner = thread_current ();
 
-//   if (frame == NULL)
-//     {
-//       PANIC ("No free frame"); // not implemented yet
+  char *kpage = palloc_get_page (flags);
 
-//       // frame_evict ();
-//       // frame = palloc_get_page (flags);
-//       // if (frame == NULL)
-//       //   PANIC ("No free frame");
-//     }
+  // try create frame
+  if (kpage)
+    {
+      fte->phys_addr = kpage;
+    }
+  else
+    {
+      // evict a frame
+      frame_evict ();
+      // try alloc again
+      fte->phys_addr = palloc_get_page (flags);
+      if (!fte->phys_addr)
+        PANIC ("No free frame");
+    }
 
-//   struct fte *fte = (struct fte *)malloc (sizeof (struct fte));
-//   fte->phys_addr = frame;
-//   fte->owner = thread_current ();
-//   fte->upage = upage;
-//   hash_insert (&frame_table, &fte->all_hash_elem);
-//   lock_release (&frame_table_lock);
-//   return frame;
-// }
+  fte->type = SPTE_FRAME;
 
-// void
-// frame_free (void *page)
-// {
-//   lock_acquire (&frame_table_lock);
-//   struct fte *fte = find_frame_from_upage (page);
-//   ASSERT (fte != NULL);
-//   hash_delete (&frame_table, &fte->all_hash_elem);
-//   free (fte);
-//   palloc_free_page (page);
-//   lock_release (&frame_table_lock);
-// }
+  // restore if necessary
+  if (swap_index != (block_sector_t)-1)
+    {
+      swap_read (swap_index, fte->phys_addr);
+    }
+
+  success = install_page (fte->upage, fte->phys_addr, fte->writable);
+
+  hash_insert (&fte->owner->frame_table, &fte->thread_hash_elem);
+
+  ASSERT (frame_table_find (&fte->owner->frame_table, upage));
+
+  lock_acquire (&frame_table_lock);
+  hash_insert (&all_frame_table, &fte->all_hash_elem);
+  list_push_back (&clock_list, &fte->clock_list_elem);
+  lock_release (&frame_table_lock);
+  return success ? fte : NULL;
+}
