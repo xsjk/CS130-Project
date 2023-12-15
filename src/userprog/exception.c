@@ -1,14 +1,16 @@
 #include "userprog/exception.h"
+#include "pagedir.h"
 #include "syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "userprog/gdt.h"
 #include "vm/page.h"
 #include <inttypes.h>
 #include <stdio.h>
 
 /* Number of page faults processed. */
-static long long page_fault_cnt;
+long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
@@ -136,6 +138,8 @@ page_fault (struct intr_frame *f)
   bool not_present; /* True: not-present page, false: writing r/o page. */
   bool write;       /* True: access was write, false: access was read. */
   bool user;        /* True: access by user, false: access by kernel. */
+  bool reserved;    /* True: fault was caused by reserved bit violation. */
+  bool instr;       /* True: fault was caused by an instruction fetch. */
   void *fault_addr; /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
@@ -153,11 +157,14 @@ page_fault (struct intr_frame *f)
 
   /* Count page faults. */
   page_fault_cnt++;
+  // printf ("page_fault_cnt: %lld\n", page_fault_cnt);
 
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+  reserved = (f->error_code & PF_R) != 0;
+  instr = (f->error_code & PF_I) != 0;
 
 #ifdef VM
   struct thread *t = thread_current ();
@@ -165,11 +172,38 @@ page_fault (struct intr_frame *f)
   if (in_syscall)
     ASSERT (!user);
 
-  if (not_present && (user || in_syscall))
-    // access to not-present page
-    // it might be a stack growth
-    if (user_stack_grouth (fault_addr, user ? f->esp : t->esp))
-      return;
+  if (is_user_vaddr (fault_addr))
+    // if user memory
+    {
+      if (not_present)
+        // an access to not-present page
+        {
+          ASSERT (pagedir_get_page (t->pagedir, fault_addr) == NULL);
+          if (user || in_syscall)
+            // if it's a stack growth
+            if (user_stack_growth (fault_addr, user ? f->esp : t->esp))
+              // grow stack successfully
+              return;
+        }
+      else
+        // a write access to existing read-only page
+        {
+          ASSERT (write); // this must be a write access
+
+          // // if it's a lazy loading
+          // void *phys_addr = pagedir_get_page (t->pagedir, fault_addr);
+          // ASSERT (phys_addr != NULL);
+          // void *vpage = pg_round_down (fault_addr);
+          // bool is_dirty = pagedir_is_dirty (t->pagedir, vpage);
+          // bool is_accessed = pagedir_is_accessed (t->pagedir, vpage);
+          // printf ("vpage: %p, is_dirty: %d, is_accessed: %d\n", vpage,
+          //         is_dirty, is_accessed);
+        }
+    }
+  else
+    // if kernel memory
+    {
+    }
 
   if (in_syscall)
     // if the error still exists and is in syscall,

@@ -109,7 +109,8 @@ struct thread
 #ifdef VM
   struct hash frame_table; /* Supplemental page table */
   void *esp;               /* save sp when calling syscall */
-  bool sys_flag;           /* if the page fault is caused by syscall */
+  bool sys_flag;           /* if the page fault is caused by syscall,
+                              used by page fault, set by syscall_handler */
 
 #endif
 

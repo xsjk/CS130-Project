@@ -250,6 +250,9 @@ sys_close (int fd)
 int
 sys_read (int fd, uint8_t __user *buffer, unsigned size)
 {
+  if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
+    sys_exit (-1);
+
   // stdin
   if (fd == STDIN_FILENO)
     {
@@ -270,6 +273,9 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
+  if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
+    sys_exit (-1);
+
   // stdout
   if (fd == STDOUT_FILENO)
     {

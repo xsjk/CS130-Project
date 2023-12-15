@@ -134,7 +134,6 @@ main (void)
 #endif
 
 #ifdef VM
-  pt_lock_init ();
   frame_init ();
   swap_init ();
 #endif

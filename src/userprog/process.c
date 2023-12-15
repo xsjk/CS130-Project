@@ -298,7 +298,7 @@ process_close_all_files (struct process *p)
 static void
 page_destroy_action (struct hash_elem *e, void *aux)
 {
-  struct fte *fte = hash_entry (e, struct fte, thread_hash_elem);
+  struct fte *fte = hash_entry (e, struct fte, cur_frame_table_elem);
   pagedir_clear_page (thread_current ()->pagedir, fte->upage);
   fte_destroy (fte);
   // free (fte);
@@ -654,7 +654,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Get a page of memory. */
 #ifdef VM
-      struct fte *fte = frame_install (upage, writable, PAL_USER, -1);
+      struct fte *fte = fte_create (upage, writable, PAL_USER);
       uint8_t *kpage = fte->phys_addr;
 
       /* Load this page */
@@ -702,8 +702,8 @@ setup_stack (void **esp)
   bool success = false;
 
 #ifdef VM
-  struct fte *fte = frame_install (((uint8_t *)PHYS_BASE) - PGSIZE, true,
-                                   PAL_USER | PAL_ZERO, -1);
+  struct fte *fte = fte_create (((uint8_t *)PHYS_BASE) - PGSIZE, true,
+                                PAL_USER | PAL_ZERO);
   success = fte != NULL;
   if (success)
     *esp = PHYS_BASE;

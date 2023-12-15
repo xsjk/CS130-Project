@@ -199,7 +199,7 @@ thread_create (const char *name, int priority, thread_func *function,
   thread_unblock (t);
 
 #ifdef VM
-  hash_init (&t->frame_table, upage_hash, upage_less, NULL);
+  cur_frame_table_init (&t->frame_table);
 #endif
 
   return tid;
