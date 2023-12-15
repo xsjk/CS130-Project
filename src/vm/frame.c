@@ -1,7 +1,10 @@
 #include "frame.h"
 
+#include "filesys/file.h"
+#include "filesys/off_t.h"
 #include "threads/malloc.h"
 #include "threads/synch.h"
+#include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
@@ -15,6 +18,18 @@ static struct list_elem *clock_list_iterator;
 /**
  * @brief Set cur_frame to the frame to be evicted
  */
+void
+frame_lock_acquire (void)
+{
+  lock_acquire (&global_frame_table_lock);
+}
+
+void
+frame_lock_release (void)
+{
+  lock_release (&global_frame_table_lock);
+}
+
 static void
 clock_list_next (void)
 {
@@ -70,6 +85,8 @@ get_target_to_evict (void)
   ASSERT (evict_target != NULL);
   ASSERT (evict_target->type == SPTE_FRAME);
   ASSERT (evict_target->phys_addr != NULL);
+  ASSERT (is_user_vaddr (evict_target->upage));
+
   clock_list_next ();
   list_remove (&evict_target->clock_list_elem);
   lock_release (&clock_list_lock);
@@ -121,9 +138,9 @@ cur_frame_table_init (struct hash *frame_table)
 }
 
 struct fte *
-global_cur_frame_table_find (void *frame)
+global_frame_table_find (void *frame)
 {
-  ASSERT (frame == NULL);
+  ASSERT (frame != NULL);
   struct fte fte;
   fte.phys_addr = frame;
   struct hash_elem *e
@@ -192,6 +209,7 @@ fte_create (void *upage, bool writable, enum palloc_flags flags)
   fte->writable = writable;
   fte->owner = thread_current ();
   fte->phys_addr = palloc_get_page_force (flags); // eviction may happen here
+  fte->mmap_entry = NULL;
   fte->type = SPTE_FRAME;
 
   success = install_page (fte->upage, fte->phys_addr, fte->writable);
@@ -211,13 +229,98 @@ fte_create (void *upage, bool writable, enum palloc_flags flags)
 }
 
 /**
+ * @brief attach a fte to file
+ * @param file the file to attach
+ * @param file_offset the offset of the file
+ * @param upage the user page
+ * @param writable writable or not
+ * @return fte if success, NULL if failed
+ */
+struct fte *
+fte_attach_to_file (struct file *file, uint32_t file_offset, void *upage,
+                    bool writable)
+{
+  struct fte *fte = malloc (sizeof (struct fte));
+  ASSERT (fte != NULL);
+  ASSERT (file->mmap_entry != NULL);
+
+  struct mmap_entry *mmap_entry = file->mmap_entry;
+
+  // initialize fte
+  fte->upage = upage;
+  fte->writable = writable;
+  fte->owner = thread_current ();
+  fte->type = SPTE_FILE;
+  fte->phys_addr = NULL;
+  fte->file_offset = file_offset;
+  fte->mmap_entry = mmap_entry;
+
+  // initialize mmap_entry
+  list_init (&mmap_entry->fte_list);
+  mmap_entry->mapid = fte->owner->mapid;
+  mmap_entry->file = file;
+
+  // add fte to mmap_entry's fte_list
+  list_push_back (&mmap_entry->fte_list, &fte->fte_elem);
+
+  // add fte into table
+  hash_insert (&fte->owner->frame_table, &fte->cur_frame_table_elem);
+  lock_acquire (&global_frame_table_lock);
+  hash_insert (&global_frame_table, &fte->global_frame_table_elem);
+  lock_release (&global_frame_table_lock);
+  return fte;
+}
+
+/**
+ * @brief detach a fte from file
+ * @param fte the frame table entry to detach
+ */
+void
+fte_detach_to_file (struct fte *fte)
+{
+  if (fte->phys_addr == NULL)
+    {
+      // allocate the frame
+      fte->phys_addr = palloc_get_page_force (PAL_USER);
+      // load data
+      file_read_at (fte->mmap_entry->file, fte->phys_addr, PGSIZE,
+                    fte->file_offset);
+      // install page
+      ASSERT (install_page (fte->upage, fte->phys_addr, fte->writable));
+    }
+  else
+    {
+      // write through if dirty
+      if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
+        {
+          file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
+                         fte->file_offset);
+        }
+    }
+  fte->mmap_entry = NULL;
+  fte->type = SPTE_FRAME;
+}
+
+/**
  * @brief evict a fte, copy from memory to swap
  * @param fte the frame table entry to evict
  */
 void
 fte_evict (struct fte *fte)
 {
+  ASSERT (is_user_vaddr (fte->upage));
   ASSERT (fte->phys_addr != NULL);
+  ASSERT (fte->type != SPTE_SWAP);
+
+  if (fte->type == SPTE_FILE)
+    {
+      // write back if dirty
+      if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
+        {
+          file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
+                         fte->file_offset);
+        }
+    }
 
   // remove the virtual map from current thread
   pagedir_clear_page (fte->owner->pagedir, fte->upage);
@@ -226,7 +329,8 @@ fte_evict (struct fte *fte)
   fte->swap_index = swap_write (kpage);
   palloc_free_page (kpage);
 
-  fte->type = SPTE_SWAP;
+  if (fte->type == SPTE_FRAME)
+    fte->type = SPTE_SWAP;
 }
 
 /**
@@ -237,27 +341,53 @@ void
 fte_unevict (struct fte *fte)
 {
   ASSERT (fte->owner == thread_current ());
-  ASSERT (fte->type == SPTE_SWAP);
 
-  block_sector_t swap_index = fte->swap_index; // from which to restore
+  if (fte->type == SPTE_SWAP)
+    {
+      block_sector_t swap_index = fte->swap_index; // from which to restore
 
-  // force allocate memory, eviction may happen here
-  fte->phys_addr = palloc_get_page_force (PAL_USER);
+      // force allocate memory, eviction may happen here
+      fte->phys_addr = palloc_get_page_force (PAL_USER);
 
-  // restore memory
-  swap_read (swap_index, fte->phys_addr);
+      // restore memory
+      swap_read (swap_index, fte->phys_addr);
 
-  // install virtual map
-  ASSERT (install_page (fte->upage, fte->phys_addr, fte->writable));
+      // install virtual map
+      ASSERT (install_page (fte->upage, fte->phys_addr, fte->writable));
 
-  fte->type = SPTE_FRAME;
+      fte->type = SPTE_FRAME;
 
-  clock_list_push_back (&fte->clock_list_elem);
+      clock_list_push_back (&fte->clock_list_elem);
+    }
+  else if (fte->type == SPTE_FILE)
+    {
+      // from which to get data
+      struct file *file = fte->mmap_entry->file;
+      off_t file_offset = fte->file_offset;
+
+      // force allocate memory, eviction may happen here
+
+      fte->phys_addr = palloc_get_page_force (PAL_USER);
+
+      // load data
+      file_read_at (file, fte->phys_addr, PGSIZE, file_offset);
+
+      // install virtual map
+      ASSERT (install_page (fte->upage, fte->phys_addr, fte->writable));
+
+      clock_list_push_back (&fte->clock_list_elem);
+    }
+  else
+    {
+      PANIC ("should not reach here");
+    }
 }
 
 /**
  * @brief destroy a fte
  * @param fte to destroy
+ * @note do not free the physical page since it will
+ * be freed in process_exit by pagedir_destroy (pd);
  */
 void
 fte_destroy (struct fte *fte)
@@ -269,5 +399,40 @@ fte_destroy (struct fte *fte)
   hash_delete (&global_frame_table, &fte->global_frame_table_elem);
   lock_release (&global_frame_table_lock);
 
+  if (fte->type == SPTE_SWAP)
+    swap_free (fte->swap_index);
+  else if (fte->type == SPTE_FILE)
+    {
+      // write back if dirty
+      if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
+        {
+          file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
+                         fte->file_offset);
+        }
+    }
+
   free (fte);
+}
+
+/**
+ * @brief destroy a mmap_entry
+ * @param mmap_entry to destroy
+ * @param destroy_func function to destroy fte
+ */
+void
+mmap_destroy (struct mmap_entry *mmap_entry,
+              mmap_elem_destroy_func destroy_func)
+{
+  ASSERT (mmap_entry != NULL);
+  ASSERT (destroy_func != NULL);
+  for (struct list_elem *e = list_begin (&mmap_entry->fte_list);
+       e != list_end (&mmap_entry->fte_list);)
+    {
+      struct fte *fte = list_entry (e, struct fte, fte_elem);
+      e = list_remove (e);
+      destroy_func (fte);
+    }
+
+  mmap_entry->file->mmap_entry = NULL;
+  free (mmap_entry);
 }

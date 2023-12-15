@@ -93,6 +93,7 @@ init_process (struct process *this, struct thread *thread)
 
   list_init (&this->child_list);
   list_init (&this->files);
+  list_init (&this->mmapped_files);
   sema_init (&this->wait_sema, 0);
   sema_init (&this->elf_load_sema, 0);
   sema_init (&this->exec_sama, 0);
@@ -277,18 +278,17 @@ is_process (struct process *p)
 }
 
 void
-process_close_all_files (struct process *p)
+process_close_all_files (struct list *files)
 {
 
   acquire_filesys ();
-  for (struct list_elem *e = list_begin (&p->files);
-       e != list_end (&p->files);)
+  for (struct list_elem *e = list_begin (files); e != list_end (files);)
     {
       struct file *f = list_entry (e, struct file, elem);
-      ASSERT (is_file (f));
+      if (!is_file (f))
+        ASSERT (is_file (f));
       struct process *onwer = file_get_owner (f);
       ASSERT (is_process (onwer));
-      ASSERT (onwer == p);
       e = list_remove (e);
       file_close (f);
     }
@@ -301,7 +301,6 @@ page_destroy_action (struct hash_elem *e, void *aux)
   struct fte *fte = hash_entry (e, struct fte, cur_frame_table_elem);
   pagedir_clear_page (thread_current ()->pagedir, fte->upage);
   fte_destroy (fte);
-  // free (fte);
 }
 
 /* Free the current process's resources. */
@@ -316,10 +315,6 @@ process_exit (void)
 
   ASSERT (is_process (p));
   ASSERT (p->thread == t);
-
-  // close all open files
-  process_close_all_files (p);
-  ASSERT (list_empty (&p->files));
 
   // prevent exiting before "process_exec" of parent process is done
   sema_down (&p->exec_sama);
@@ -344,9 +339,21 @@ process_exit (void)
   if (p->parent)
     sema_up (&p->wait_sema);
 
-#ifdef VM
-  hash_destroy (&t->frame_table, page_destroy_action);
+  // close all open files
+  process_close_all_files (&p->files);
+  ASSERT (list_empty (&p->files));
 
+#ifdef VM
+  // hash_destroy (&t->frame_table, page_destroy_action);
+  for (struct list_elem *e = list_begin (&p->mmapped_files);
+       e != list_end (&p->mmapped_files);)
+    {
+      struct file *mmap_file = list_entry (e, struct file, elem);
+      struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
+      e = list_remove (e);
+      mmap_destroy (mmap_entry, fte_destroy);
+      file_close (mmap_file);
+    }
 #endif
 
   /* Destroy the current process's page directory and switch back

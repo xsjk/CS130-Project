@@ -14,7 +14,8 @@ struct process
   struct process *parent; /* Parent thread. */
 
   /// TODO: move any of these to thread struct if they can be freed with thread
-  struct list files; /* Files opened by this thread*/
+  struct list files;         /* Files opened by this thread*/
+  struct list mmapped_files; /* Files opened by this thread*/
 
   struct list child_list; /* List of child processes. */
   /// TODO: use hash table to store child processes
@@ -41,7 +42,7 @@ int process_wait (pid_t);
 void process_exit (void);
 void process_activate (void);
 
-void process_close_all_files (struct process *);
+void process_close_all_files (struct list *files);
 
 struct process *get_process (pid_t);
 

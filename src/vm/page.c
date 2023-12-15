@@ -22,8 +22,7 @@ user_stack_growth (void *fault_addr, void *esp)
   if (fte == NULL)
     {
       // try stack growth
-      if (fault_addr >= esp - 32 && fault_addr < PHYS_BASE
-          && upage >= PHYS_BASE - STACK_MAX)
+      if (fault_addr >= esp - 32 && upage >= PHYS_BASE - STACK_MAX)
         {
           struct fte *new_fte = fte_create (upage, writable, PAL_USER);
           ASSERT (new_fte != NULL);
@@ -41,6 +40,7 @@ user_stack_growth (void *fault_addr, void *esp)
           PANIC (" frame should not exist, otherwise won't raise page fault.");
           break;
         case SPTE_SWAP:
+        case SPTE_FILE:
           fte_unevict (fte);
           break;
         default:

@@ -86,6 +86,7 @@ struct process;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
 struct thread
 {
   /* Owned by thread.c. */
@@ -109,9 +110,8 @@ struct thread
 #ifdef VM
   struct hash frame_table; /* Supplemental page table */
   void *esp;               /* save sp when calling syscall */
-  bool sys_flag;           /* if the page fault is caused by syscall,
-                              used by page fault, set by syscall_handler */
-
+  bool sys_flag;           /* if the page fault is caused by syscall */
+  int mapid;               /* mapid */
 #endif
 
   struct thread *parent; /* The creator of this thread */

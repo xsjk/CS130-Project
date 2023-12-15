@@ -1,6 +1,7 @@
 #include "filesys/file.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "vm/frame.h"
 #include <debug.h>
 
 /* Identifies an file. */
@@ -30,6 +31,9 @@ file_open (struct inode *inode)
       file->elem.next = NULL;
       file_set_ownwer (file);
 #endif
+#ifdef VM
+      file->mmap_entry = NULL;
+#endif
       return file;
     }
   else
@@ -54,6 +58,10 @@ file_close (struct file *file)
 {
   if (file != NULL)
     {
+#ifdef VM
+      if (file->mmap_entry != NULL)
+        mmap_destroy (file->mmap_entry, fte_detach_to_file);
+#endif
       file_allow_write (file);
       inode_close (file->inode);
       free (file);

@@ -5,6 +5,8 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 #include <filesys/directory.h>
 #include <filesys/file.h>
 #include <filesys/filesys.h>
@@ -237,6 +239,8 @@ sys_tell (int fd)
   return pos;
 }
 
+static void sys_munmap (int mapping);
+
 void
 sys_close (int fd)
 {
@@ -289,6 +293,83 @@ sys_write (int fd, const char __user *buffer, unsigned size)
   int bytes_written = file_write (file, buffer, size);
   release_filesys ();
   return bytes_written;
+}
+
+static mapid_t
+sys_mmap (int fd, void *addr)
+{
+
+  // check the fd and addr
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO || addr == NULL
+      || pg_ofs (addr) != 0)
+    return MAP_FAILED;
+  if (!is_user_vaddr (addr) || !is_user_vaddr (addr + 4095))
+    return MAP_FAILED;
+
+  // check the file
+  struct file *file = file_owner_validate (fd);
+  acquire_filesys ();
+  off_t size = file_length (file);
+  release_filesys ();
+  if (size == 0)
+    return MAP_FAILED;
+
+  // check the overlap
+  struct thread *cur = thread_current ();
+  int page_cnt = (size - 1) / PGSIZE + 1;
+  for (int i = 0; i < page_cnt; i++)
+    {
+      void *upage = addr + i * PGSIZE;
+      if (cur_frame_table_find (upage) != NULL)
+        return MAP_FAILED;
+    }
+
+  cur->mapid++;
+
+  file->mmap_entry = malloc (sizeof (struct mmap_entry));
+
+  off_t ofs = 0;
+  // create mmap
+  while (size > 0)
+    {
+      size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+      // create a fte
+      ASSERT (file->mmap_entry != NULL);
+      struct fte *fte = fte_attach_to_file (file, ofs, addr, true);
+      if (fte == NULL)
+        return MAP_FAILED;
+
+      size -= page_read_bytes;
+      addr += PGSIZE;
+      ofs += PGSIZE;
+    }
+
+  // move the file from normal file list to mmapped file list
+  list_remove (&file->elem);
+  list_push_back (&cur->process->mmapped_files, &file->elem);
+
+  return cur->mapid;
+}
+
+static void
+sys_munmap (int mapping)
+{
+  struct process *cur = process_current ();
+  for (struct list_elem *e = list_begin (&cur->mmapped_files);
+       e != list_end (&cur->mmapped_files);)
+    {
+      struct file *mmap_file = list_entry (e, struct file, elem);
+      struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
+      e = list_remove (e);
+
+      if (mmap_entry->mapid == mapping)
+        {
+          // iterate the fte list and destroy
+          mmap_destroy (mmap_entry, fte_destroy);
+        }
+    }
 }
 
 /*************************/
@@ -346,6 +427,14 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
       sys_close (*(int *)(f->esp + 4));
       break;
+#ifdef VM
+    case SYS_MMAP:
+      f->eax = sys_mmap (*(int *)(f->esp + 4), *(void **)(f->esp + 8));
+      break;
+    case SYS_MUNMAP:
+      sys_munmap (*(int *)(f->esp + 4));
+      break;
+#endif
     default:
       sys_exit (-1);
     }

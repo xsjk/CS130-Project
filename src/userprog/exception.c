@@ -172,38 +172,18 @@ page_fault (struct intr_frame *f)
   if (in_syscall)
     ASSERT (!user);
 
-  if (is_user_vaddr (fault_addr))
-    // if user memory
-    {
-      if (not_present)
-        // an access to not-present page
-        {
-          ASSERT (pagedir_get_page (t->pagedir, fault_addr) == NULL);
-          if (user || in_syscall)
-            // if it's a stack growth
-            if (user_stack_growth (fault_addr, user ? f->esp : t->esp))
-              // grow stack successfully
-              return;
-        }
-      else
-        // a write access to existing read-only page
-        {
-          ASSERT (write); // this must be a write access
-
-          // // if it's a lazy loading
-          // void *phys_addr = pagedir_get_page (t->pagedir, fault_addr);
-          // ASSERT (phys_addr != NULL);
-          // void *vpage = pg_round_down (fault_addr);
-          // bool is_dirty = pagedir_is_dirty (t->pagedir, vpage);
-          // bool is_accessed = pagedir_is_accessed (t->pagedir, vpage);
-          // printf ("vpage: %p, is_dirty: %d, is_accessed: %d\n", vpage,
-          //         is_dirty, is_accessed);
-        }
-    }
-  else
-    // if kernel memory
-    {
-    }
+  if (not_present)
+    if (is_user_vaddr (fault_addr))
+      {
+        if (in_syscall || user)
+          if (user_stack_growth (fault_addr, user ? f->esp : t->esp))
+            // grow stack successfully
+            return;
+      }
+    else if (in_syscall)
+      {
+        printf ("not_present: %d\n", not_present);
+      }
 
   if (in_syscall)
     // if the error still exists and is in syscall,
