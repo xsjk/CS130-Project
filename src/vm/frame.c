@@ -1,46 +1,79 @@
 #include "frame.h"
 
+#include "threads/malloc.h"
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
 struct lock global_frame_table_lock; // lock for frame table sychronization
 struct hash global_frame_table;      // frame table
-static struct fte *cur_frame;        // current position for clock list,
-                                     // the one to be evicted
-static struct list clock_list;       // a cycle list for clock algorithm
 
+struct lock clock_list_lock;   // lock for clock list sychronization
+static struct list clock_list; // a cycle list for clock algorithm
+static struct list_elem *clock_list_iterator;
+
+/**
+ * @brief Set cur_frame to the frame to be evicted
+ */
 static void
 clock_list_next (void)
 {
-  ASSERT (cur_frame != NULL);
-  /* check if tail */
-  if (list_next (&cur_frame->clock_list_elem) == list_tail (&clock_list))
-    cur_frame
-        = list_entry (list_begin (&clock_list), struct fte, clock_list_elem);
-  else
-    cur_frame = list_entry (list_next (&cur_frame->clock_list_elem),
-                            struct fte, clock_list_elem);
-  ASSERT (cur_frame->phys_addr != NULL)
+  clock_list_iterator
+      = (list_next (clock_list_iterator) == list_tail (&clock_list))
+            ? list_begin (&clock_list)
+            : list_next (clock_list_iterator);
 }
 
+/**
+ * @brief Set cur_frame to the frame to be evicted
+ */
 static void
-replace_by_clock (void)
+clock_list_push_back (struct list_elem *elem)
 {
-  // initialize when start replacement
-  if (cur_frame == NULL)
-    cur_frame
-        = list_entry (list_begin (&clock_list), struct fte, clock_list_elem);
-  ASSERT (cur_frame != NULL);
-
-  while (pagedir_is_accessed (cur_frame->owner->pagedir, cur_frame->upage))
+  if (list_empty (&clock_list))
     {
-      ASSERT (cur_frame->phys_addr != NULL)
-      /* if accessed, set accessed to false and move to next */
-      pagedir_set_accessed (cur_frame->owner->pagedir, cur_frame->upage,
-                            false);
-      clock_list_next ();
+      clock_list_iterator = elem;
+      list_push_back (&clock_list, elem);
     }
+  else
+    list_insert (clock_list_iterator, elem);
+}
+
+/**
+ * @brief Helper function for evicting a frame
+ */
+static struct fte *
+get_target_to_evict (void)
+{
+  lock_acquire (&clock_list_lock);
+  struct fte *evict_target;
+  while (true)
+    {
+      evict_target
+          = list_entry (clock_list_iterator, struct fte, clock_list_elem);
+      if (pagedir_is_accessed (evict_target->owner->pagedir,
+                               evict_target->upage))
+        /* if accessed, set accessed to false and move to next */
+        {
+          pagedir_set_accessed (evict_target->owner->pagedir,
+                                evict_target->upage, false);
+          clock_list_next ();
+        }
+      else
+        break;
+    }
+
+  // Now, cur_frame is the one that satisfies the condition:
+  // 1. not accessed
+  // 2. is a frame
+  // so we can evict it
+  ASSERT (evict_target != NULL);
+  ASSERT (evict_target->type == SPTE_FRAME);
+  ASSERT (evict_target->phys_addr != NULL);
+  clock_list_next ();
+  list_remove (&evict_target->clock_list_elem);
+  lock_release (&clock_list_lock);
+  return evict_target;
 }
 
 static unsigned
@@ -122,10 +155,10 @@ void
 frame_init (void)
 {
   lock_init (&global_frame_table_lock);
+  lock_init (&clock_list_lock);
   hash_init (&global_frame_table, global_frame_table_hash,
              global_frame_table_less, NULL);
   list_init (&clock_list);
-  cur_frame = NULL;
 }
 
 /**
@@ -134,14 +167,7 @@ frame_init (void)
 void
 frame_evict (void)
 {
-  replace_by_clock (); // set cur_frame to the frame to be evicted
-
-  ASSERT (cur_frame->phys_addr != NULL)
-
-  struct fte *last_frame = cur_frame;
-  fte_evict (cur_frame);
-  clock_list_next ();
-  list_remove (&last_frame->clock_list_elem);
+  fte_evict (get_target_to_evict ());
 }
 
 /**
@@ -176,8 +202,11 @@ fte_create (void *upage, bool writable, enum palloc_flags flags)
 
   lock_acquire (&global_frame_table_lock);
   hash_insert (&global_frame_table, &fte->global_frame_table_elem);
-  list_push_back (&clock_list, &fte->clock_list_elem);
+
+  // initialize cur_frame at the first run
+  clock_list_push_back (&fte->clock_list_elem);
   lock_release (&global_frame_table_lock);
+
   return success ? fte : NULL;
 }
 
@@ -188,8 +217,6 @@ fte_create (void *upage, bool writable, enum palloc_flags flags)
 void
 fte_evict (struct fte *fte)
 {
-  ASSERT (fte->owner == thread_current ());
-  ASSERT (fte->type == SPTE_FRAME);
   ASSERT (fte->phys_addr != NULL);
 
   // remove the virtual map from current thread
@@ -223,7 +250,9 @@ fte_unevict (struct fte *fte)
   // install virtual map
   ASSERT (install_page (fte->upage, fte->phys_addr, fte->writable));
 
-  fte->type == SPTE_FRAME;
+  fte->type = SPTE_FRAME;
+
+  clock_list_push_back (&fte->clock_list_elem);
 }
 
 /**

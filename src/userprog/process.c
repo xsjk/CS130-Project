@@ -335,6 +335,7 @@ process_exit (void)
       process_wait (pid);
     }
 
+  p->thread->process = NULL;
   p->thread = NULL;
 
   printf ("%s: exit(%d)\n", t->name, p->exit_status);
