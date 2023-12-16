@@ -58,7 +58,8 @@ lookup_page (uint32_t *pd, const void *vaddr, bool create)
 {
   union entry_t *pt, *pde;
 
-  ASSERT (pd != NULL);
+  if (pd == NULL)
+    ASSERT (pd != NULL);
 
   /* Shouldn't create new kernel virtual mappings. */
   ASSERT (!create || is_user_vaddr (vaddr));

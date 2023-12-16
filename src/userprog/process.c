@@ -281,26 +281,26 @@ is_process (struct process *p)
 void
 process_close_all_files (struct list *files)
 {
-
-  acquire_filesys ();
   for (struct list_elem *e = list_begin (files); e != list_end (files);)
     {
       struct file *f = list_entry (e, struct file, elem);
-      if (!is_file (f))
-        ASSERT (is_file (f));
+      ASSERT (is_file (f));
+      ASSERT (f->mmap_entry == NULL);
       struct process *onwer = file_get_owner (f);
       ASSERT (is_process (onwer));
       e = list_remove (e);
       file_close (f);
     }
-  release_filesys ();
 }
 
 static void
 page_destroy_action (struct hash_elem *e, void *aux)
 {
   struct fte *fte = hash_entry (e, struct fte, cur_frame_table_elem);
-  pagedir_clear_page (thread_current ()->pagedir, fte->upage);
+  struct thread *t = thread_current ();
+
+  ASSERT (&t->frame_table == aux);
+  /// Warning: deleting while iterating
   fte_destroy (fte);
 }
 
@@ -340,9 +340,12 @@ process_exit (void)
   if (p->parent)
     sema_up (&p->wait_sema);
 
+  acquire_filesys ();
+
   // close all open files
   process_close_all_files (&p->files);
-  ASSERT (list_empty (&p->files));
+  if (!list_empty (&p->files))
+    ASSERT (list_empty (&p->files));
 
 #ifdef VM
   for (struct list_elem *e = list_begin (&p->mmapped_files);
@@ -351,9 +354,16 @@ process_exit (void)
       struct file *mmap_file = list_entry (e, struct file, elem);
       struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
       e = list_remove (e);
+      // mmap_destroy iteratively calls fte_destroy
+      // fte_destroy may write through to the file
+      // so the mmap_file should close later
       mmap_destroy (mmap_entry, fte_destroy);
       file_close (mmap_file);
     }
+
+  release_filesys ();
+
+  hash_destroy (&t->frame_table, page_destroy_action);
 #endif
 
   /* Destroy the current process's page directory and switch back

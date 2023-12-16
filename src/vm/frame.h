@@ -6,8 +6,6 @@
 #include "threads/thread.h"
 #include <hash.h>
 
-extern struct hash global_frame_table; // frame table
-
 enum frame_type
 {
   SPTE_FILE,  // file
@@ -15,6 +13,8 @@ enum frame_type
   SPTE_FRAME, // frame
   SPTE_ZERO   // zero
 };
+
+extern struct lock clock_list_lock;
 
 struct fte;
 
@@ -42,8 +42,7 @@ struct fte
   enum frame_type type; // type of the supplemental page table entry
   bool writable;        // writable or not
 
-  struct hash_elem cur_frame_table_elem;    // hash element for frame table
-  struct hash_elem global_frame_table_elem; // hash element for frame table
+  struct hash_elem cur_frame_table_elem; // hash element for frame table
 
   struct list_elem clock_list_elem; // list element for clock algorithm
   struct list_elem fte_elem;
@@ -60,7 +59,6 @@ struct fte *cur_frame_table_find (void *upage);
 
 /* ------------------- Global Frame Table Methods -------------------- */
 
-struct fte *global_frame_table_find (void *upage);
 void frame_init (void);  // initialize frame table
 void frame_evict (void); // automatically evict a frame
 
@@ -72,9 +70,9 @@ void fte_unevict (struct fte *fte);
 void fte_destroy (struct fte *fte);
 struct fte *fte_attach_to_file (struct file *file, uint32_t file_offset,
                                 void *upage, bool writable);
-void fte_detach_to_file (struct fte *fte);
+void fte_detach_from_file (struct fte *fte);
 
-typedef void (*mmap_elem_destroy_func) (struct mmap_entry *mmap_entry);
+typedef void (*mmap_elem_destroy_func) (struct fte *);
 
 void mmap_destroy (struct mmap_entry *mmap_entry,
                    mmap_elem_destroy_func destroy_func);

@@ -42,8 +42,7 @@ swap_alloc ()
 void
 swap_free (swap_id_t swap_idx)
 {
-  if (!bitmap_all (swap_used_map, swap_idx, 1))
-    ASSERT (bitmap_all (swap_used_map, swap_idx, 1));
+  ASSERT (bitmap_all (swap_used_map, swap_idx, 1));
   bitmap_set_multiple (swap_used_map, swap_idx, 1, false);
 }
 

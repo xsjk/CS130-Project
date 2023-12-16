@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "debug.h"
 #include "devices/block.h"
 #include "process.h"
 #include "threads/interrupt.h"
@@ -21,7 +22,7 @@
    UADDR must be below PHYS_BASE.
    Returns the byte value if successful, -1 if a segfault
    occurred. */
-int
+NO_INLINE int
 try_load (const uint8_t __user *uaddr)
 {
   int result;
@@ -36,7 +37,7 @@ try_load (const uint8_t __user *uaddr)
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
    Returns true if successful, false if a segfault occurred. */
-bool
+NO_INLINE bool
 try_store (uint8_t __user *udst, uint8_t byte)
 {
   int error_code;
@@ -269,6 +270,8 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 
   // file
   struct file *file = file_owner_validate (fd);
+  for (int i = 0; i < size; i += PGSIZE)
+    buffer[i] = 0;
   acquire_filesys ();
   int bytes_read = file_read (file, buffer, size);
   release_filesys ();

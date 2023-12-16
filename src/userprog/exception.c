@@ -126,8 +126,8 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f)
 {
-  bool is_try_load = f->eip == try_load + 24;
-  bool is_try_store = f->eip == try_store + 25; // TODO: verify this
+  bool is_try_load = f->eip >= try_load && f->eip <= try_load + 24;
+  bool is_try_store = f->eip >= try_store && f->eip <= try_store + 25;
   if (is_try_load || is_try_store)
     {
       f->eip = f->eax;

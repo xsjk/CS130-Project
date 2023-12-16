@@ -60,7 +60,7 @@ file_close (struct file *file)
     {
 #ifdef VM
       if (file->mmap_entry != NULL)
-        mmap_destroy (file->mmap_entry, fte_detach_to_file);
+        mmap_destroy (file->mmap_entry, fte_detach_from_file);
 #endif
       file_allow_write (file);
       inode_close (file->inode);

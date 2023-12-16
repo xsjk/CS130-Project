@@ -1,6 +1,6 @@
 #include "frame.h"
-
 #include "filesys/file.h"
+#include "filesys/filesys.h"
 #include "filesys/off_t.h"
 #include "threads/malloc.h"
 #include "threads/synch.h"
@@ -8,10 +8,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
-struct lock global_frame_table_lock; // lock for frame table sychronization
-struct hash global_frame_table;      // frame table
-
-struct lock clock_list_lock;   // lock for clock list sychronization
+struct lock clock_list_lock;
 static struct list clock_list; // a cycle list for clock algorithm
 static struct list_elem *clock_list_iterator;
 
@@ -26,10 +23,12 @@ clock_list_next (void)
 
 /**
  * @brief Set cur_frame to the frame to be evicted
+ * @note This function gaurentees thread safety
  */
 static void
 clock_list_push_back (struct list_elem *elem)
 {
+  lock_acquire (&clock_list_lock);
   if (list_empty (&clock_list))
     {
       clock_list_iterator = elem;
@@ -37,10 +36,29 @@ clock_list_push_back (struct list_elem *elem)
     }
   else
     list_insert (clock_list_iterator, elem);
+  lock_release (&clock_list_lock);
+}
+
+/**
+ * @brief Clock list remove
+ * @param elem the elem in struct fte
+ * @note This function gaurentees thread safety
+ */
+static void
+clock_list_remove (struct list_elem *elem)
+{
+  ASSERT (elem != NULL);
+  ASSERT (!list_empty (&clock_list));
+  lock_acquire (&clock_list_lock);
+  if (clock_list_iterator == elem)
+    clock_list_next ();
+  list_remove (elem);
+  lock_release (&clock_list_lock);
 }
 
 /**
  * @brief Helper function for evicting a frame
+ * @note This function gaurentees thread safety
  */
 static struct fte *
 clock_find_target_to_evict (void)
@@ -90,24 +108,6 @@ clock_find_target_to_evict (void)
 }
 
 static unsigned
-global_frame_table_hash (const struct hash_elem *e, void *aux)
-{
-  const struct fte *fte = hash_entry (e, struct fte, global_frame_table_elem);
-  return hash_bytes (&fte->kpage, sizeof fte->kpage);
-}
-
-static bool
-global_frame_table_less (const struct hash_elem *a, const struct hash_elem *b,
-                         void *aux)
-{
-  const struct fte *fte_a
-      = hash_entry (a, struct fte, global_frame_table_elem);
-  const struct fte *fte_b
-      = hash_entry (b, struct fte, global_frame_table_elem);
-  return fte_a->kpage < fte_b->kpage;
-}
-
-static unsigned
 cur_frame_table_hash (const struct hash_elem *e, void *aux)
 {
   const struct fte *fte = hash_entry (e, struct fte, cur_frame_table_elem);
@@ -130,21 +130,8 @@ cur_frame_table_less (const struct hash_elem *a, const struct hash_elem *b,
 void
 cur_frame_table_init (struct hash *frame_table)
 {
-  hash_init (frame_table, cur_frame_table_hash, cur_frame_table_less, NULL);
-}
-
-struct fte *
-global_frame_table_find (void *frame)
-{
-  ASSERT (frame != NULL);
-  struct fte fte;
-  fte.kpage = frame;
-  struct hash_elem *e
-      = hash_find (&global_frame_table, &fte.global_frame_table_elem);
-  if (e != NULL)
-    return hash_entry (e, struct fte, global_frame_table_elem);
-  else
-    return NULL;
+  hash_init (frame_table, cur_frame_table_hash, cur_frame_table_less,
+             frame_table);
 }
 
 /**
@@ -167,10 +154,7 @@ cur_frame_table_find (void *upage)
 void
 frame_init (void)
 {
-  lock_init (&global_frame_table_lock);
   lock_init (&clock_list_lock);
-  hash_init (&global_frame_table, global_frame_table_hash,
-             global_frame_table_less, NULL);
   list_init (&clock_list);
 }
 
@@ -219,12 +203,8 @@ fte_create (void *upage, bool writable)
 
   ASSERT (cur_frame_table_find (upage));
 
-  lock_acquire (&global_frame_table_lock);
-  hash_insert (&global_frame_table, &fte->global_frame_table_elem);
-
   // initialize cur_frame at the first run
   clock_list_push_back (&fte->clock_list_elem);
-  lock_release (&global_frame_table_lock);
 
   lock_release (&fte->lock);
 
@@ -269,9 +249,7 @@ fte_attach_to_file (struct file *file, uint32_t file_offset, void *upage,
 
   // add fte into table
   hash_insert (&fte->owner->frame_table, &fte->cur_frame_table_elem);
-  lock_acquire (&global_frame_table_lock);
-  hash_insert (&global_frame_table, &fte->global_frame_table_elem);
-  lock_release (&global_frame_table_lock);
+
   return fte;
 }
 
@@ -280,8 +258,10 @@ fte_attach_to_file (struct file *file, uint32_t file_offset, void *upage,
  * @param fte the frame table entry to detach
  */
 void
-fte_detach_to_file (struct fte *fte)
+fte_detach_from_file (struct fte *fte)
 {
+  ASSERT (has_acquired_filesys ());
+
   lock_acquire (&fte->lock);
   if (fte->kpage == NULL)
     {
@@ -304,6 +284,8 @@ fte_detach_to_file (struct fte *fte)
     }
   fte->mmap_entry = NULL;
   fte->type = SPTE_FRAME;
+  clock_list_push_back (&fte->clock_list_elem);
+
   lock_release (&fte->lock);
 }
 
@@ -325,8 +307,10 @@ fte_evict (struct fte *fte)
       // write back if dirty
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
         {
+          acquire_filesys ();
           file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
                          fte->file_offset);
+          release_filesys ();
         }
     }
 
@@ -354,23 +338,16 @@ fte_unevict (struct fte *fte)
 
   lock_acquire (&fte->lock);
 
+  // force allocate memory, eviction may happen here
+  void *new_kpage = palloc_get_page_force (PAL_USER);
+
   if (fte->type == SPTE_SWAP)
     {
       swap_id_t swap_id = fte->swap_id; // from which to restore
 
-      // force allocate memory, eviction may happen here
-      fte->kpage = palloc_get_page_force (PAL_USER);
-
       // restore memory
-      swap_read (swap_id, fte->kpage);
+      swap_read (swap_id, new_kpage);
       swap_free (swap_id);
-
-      // install virtual map
-      ASSERT (install_page (fte->upage, fte->kpage, fte->writable));
-
-      fte->type = SPTE_FRAME;
-
-      clock_list_push_back (&fte->clock_list_elem);
     }
   else if (fte->type == SPTE_FILE)
     {
@@ -378,21 +355,24 @@ fte_unevict (struct fte *fte)
       struct file *file = fte->mmap_entry->file;
       off_t file_offset = fte->file_offset;
 
-      // force allocate memory, eviction may happen here
-
-      fte->kpage = palloc_get_page_force (PAL_USER);
-
       // load data
-      file_read_at (file, fte->kpage, PGSIZE, file_offset);
-
-      // install virtual map
-      ASSERT (install_page (fte->upage, fte->kpage, fte->writable));
-
-      clock_list_push_back (&fte->clock_list_elem);
+      acquire_filesys ();
+      file_read_at (file, new_kpage, PGSIZE, file_offset);
+      release_filesys ();
     }
   else
     {
       PANIC ("should not reach here");
+    }
+
+  // install virtual map
+  fte->kpage = new_kpage;
+  ASSERT (install_page (fte->upage, fte->kpage, fte->writable));
+
+  if (fte->type == SPTE_SWAP)
+    {
+      fte->type = SPTE_FRAME;
+      clock_list_push_back (&fte->clock_list_elem);
     }
 
   lock_release (&fte->lock);
@@ -403,17 +383,20 @@ fte_unevict (struct fte *fte)
  * @param fte to destroy
  * @note do not free the physical page since it will
  * be freed in process_exit by pagedir_destroy (pd);
+ * @note this may write to through file if dirty
+ * so the file should not be closed
  */
 void
 fte_destroy (struct fte *fte)
 {
-  ASSERT (fte->owner == thread_current ());
+  if (fte->owner != thread_current ())
+    ASSERT (fte->owner == thread_current ());
+
+  // remove from thread's frame table
+  /// TODO : check if it is thread safe
   hash_delete (&fte->owner->frame_table, &fte->cur_frame_table_elem);
 
-  lock_acquire (&global_frame_table_lock);
-  hash_delete (&global_frame_table, &fte->global_frame_table_elem);
-  lock_release (&global_frame_table_lock);
-
+  // remove from clock list
   if (fte->type == SPTE_SWAP)
     swap_free (fte->swap_id);
   else if (fte->type == SPTE_FILE)
@@ -422,6 +405,10 @@ fte_destroy (struct fte *fte)
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
         file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
                        fte->file_offset);
+    }
+  else if (fte->type == SPTE_FRAME)
+    {
+      clock_list_remove (&fte->clock_list_elem);
     }
 
   free (fte);
