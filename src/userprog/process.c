@@ -331,15 +331,6 @@ process_exit (void)
       process_wait (pid);
     }
 
-  p->thread->process = NULL;
-  p->thread = NULL;
-
-  printf ("%s: exit(%d)\n", t->name, p->exit_status);
-
-  // tell the parent process that this process is finished
-  if (p->parent)
-    sema_up (&p->wait_sema);
-
   acquire_filesys ();
 
   // close all open files
@@ -352,6 +343,7 @@ process_exit (void)
        e != list_end (&p->mmapped_files);)
     {
       struct file *mmap_file = list_entry (e, struct file, elem);
+      ASSERT (is_file (mmap_file));
       struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
       e = list_remove (e);
       // mmap_destroy iteratively calls fte_destroy
@@ -361,10 +353,12 @@ process_exit (void)
       file_close (mmap_file);
     }
 
-  release_filesys ();
-
   hash_destroy (&t->frame_table, page_destroy_action);
 #endif
+  release_filesys ();
+
+  p->thread->process = NULL;
+  p->thread = NULL;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -382,6 +376,12 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  // tell the parent process that this process is finished
+  if (p->parent)
+    sema_up (&p->wait_sema);
+
+  printf ("%s: exit(%d)\n", t->name, p->exit_status);
 }
 
 /* Sets up the CPU for running user code in the current

@@ -103,7 +103,7 @@ struct thread
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
-  union entry_t *pagedir; /* Page directory. */
+  uint32_t *pagedir; /* Page directory. */
   struct process
       *process; /* The user process that is running on this thread */
 #endif

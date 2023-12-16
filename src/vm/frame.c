@@ -237,12 +237,10 @@ fte_attach_to_file (struct file *file, uint32_t file_offset, void *upage,
   fte->kpage = NULL;
   fte->file_offset = file_offset;
   fte->mmap_entry = mmap_entry;
+  fte->size = file_length (file) - file_offset;
+  if (fte->size > PGSIZE)
+    fte->size = PGSIZE;
   lock_init (&fte->lock);
-
-  // initialize mmap_entry
-  list_init (&mmap_entry->fte_list);
-  mmap_entry->mapid = fte->owner->mapid;
-  mmap_entry->file = file;
 
   // add fte to mmap_entry's fte_list
   list_push_back (&mmap_entry->fte_list, &fte->fte_elem);
@@ -268,7 +266,7 @@ fte_detach_from_file (struct fte *fte)
       // allocate the frame
       fte->kpage = palloc_get_page_force (PAL_USER);
       // load data
-      file_read_at (fte->mmap_entry->file, fte->kpage, PGSIZE,
+      file_read_at (fte->mmap_entry->file, fte->kpage, fte->size,
                     fte->file_offset);
       // install page
       ASSERT (install_page (fte->upage, fte->kpage, fte->writable));
@@ -278,7 +276,9 @@ fte_detach_from_file (struct fte *fte)
       // write through if dirty
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
         {
-          file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
+          struct file *file = fte->mmap_entry->file;
+          ASSERT (is_file (file));
+          file_write_at (fte->mmap_entry->file, fte->upage, fte->size,
                          fte->file_offset);
         }
     }
@@ -308,7 +308,7 @@ fte_evict (struct fte *fte)
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
         {
           acquire_filesys ();
-          file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
+          file_write_at (fte->mmap_entry->file, fte->upage, fte->size,
                          fte->file_offset);
           release_filesys ();
         }
@@ -351,13 +351,18 @@ fte_unevict (struct fte *fte)
     }
   else if (fte->type == SPTE_FILE)
     {
-      // from which to get data
-      struct file *file = fte->mmap_entry->file;
-      off_t file_offset = fte->file_offset;
-
+      // write back if dirty
+      if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
+        {
+          acquire_filesys ();
+          file_write_at (fte->mmap_entry->file, fte->upage, fte->size,
+                         fte->file_offset);
+          release_filesys ();
+        }
       // load data
       acquire_filesys ();
-      file_read_at (file, new_kpage, PGSIZE, file_offset);
+      file_read_at (fte->mmap_entry->file, new_kpage, fte->size,
+                    fte->file_offset);
       release_filesys ();
     }
   else
@@ -390,7 +395,9 @@ void
 fte_destroy (struct fte *fte)
 {
   if (fte->owner != thread_current ())
-    ASSERT (fte->owner == thread_current ());
+    {
+      ASSERT (fte->owner == thread_current ());
+    }
 
   // remove from thread's frame table
   /// TODO : check if it is thread safe
@@ -403,8 +410,11 @@ fte_destroy (struct fte *fte)
     {
       // write back if dirty
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
-        file_write_at (fte->mmap_entry->file, fte->upage, PGSIZE,
-                       fte->file_offset);
+        {
+          struct file *file = fte->mmap_entry->file;
+          // ASSERT (is_file (file));
+          file_write_at (file, fte->upage, fte->size, fte->file_offset);
+        }
     }
   else if (fte->type == SPTE_FRAME)
     {
@@ -430,6 +440,7 @@ mmap_destroy (struct mmap_entry *mmap_entry,
     {
       struct fte *fte = list_entry (e, struct fte, fte_elem);
       e = list_remove (e);
+      ASSERT (fte->mmap_entry == mmap_entry);
       destroy_func (fte);
     }
 

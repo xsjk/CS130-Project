@@ -37,6 +37,7 @@ struct fte
   };
 
   uint32_t file_offset;
+  uint32_t size;
   struct mmap_entry *mmap_entry; // file
 
   enum frame_type type; // type of the supplemental page table entry

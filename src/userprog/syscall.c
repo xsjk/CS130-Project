@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include "debug.h"
 #include "devices/block.h"
+#include "devices/shutdown.h"
 #include "process.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
@@ -15,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
+#include <threads/malloc.h>
 
 #define __user
 
@@ -94,7 +96,7 @@ user_has_access (uint8_t __user *uaddr, size_t size)
 /*************************/
 
 static void
-sys_halt ()
+sys_halt (void)
 {
   shutdown_power_off ();
   NOT_REACHED ();
@@ -141,7 +143,6 @@ user_access_validate_string (const char __user *uaddr)
 static struct file *
 file_owner_validate (int fd)
 {
-  struct thread *cur = thread_current ();
   struct file *file = file_from_fd (fd);
   kernel_access_validate (file, sizeof (struct file));
   if (!is_file (file))
@@ -192,7 +193,6 @@ sys_open (const char *path)
   fd = file->fd;
 
   // add to thread's file list
-
   list_push_back (&process_current ()->files, &file->elem);
 
 done:
@@ -212,7 +212,7 @@ sys_remove (const char *path)
   return result;
 }
 
-off_t
+static off_t
 sys_filesize (int fd)
 {
   struct file *file = file_owner_validate (fd);
@@ -222,7 +222,7 @@ sys_filesize (int fd)
   return size;
 }
 
-void
+static void
 sys_seek (int fd, unsigned position)
 {
   struct file *file = file_owner_validate (fd);
@@ -231,7 +231,7 @@ sys_seek (int fd, unsigned position)
   release_filesys ();
 }
 
-off_t
+static off_t
 sys_tell (int fd)
 {
   struct file *file = file_owner_validate (fd);
@@ -241,9 +241,7 @@ sys_tell (int fd)
   return pos;
 }
 
-static void sys_munmap (int mapping);
-
-void
+static void
 sys_close (int fd)
 {
   struct file *file = file_owner_validate (fd);
@@ -253,7 +251,7 @@ sys_close (int fd)
   release_filesys ();
 }
 
-int
+static int
 sys_read (int fd, uint8_t __user *buffer, unsigned size)
 {
   if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
@@ -262,7 +260,7 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
   // stdin
   if (fd == STDIN_FILENO)
     {
-      int i;
+      unsigned i;
       for (i = 0; i < size; i++)
         buffer[i] = input_getc ();
       return i;
@@ -270,7 +268,7 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 
   // file
   struct file *file = file_owner_validate (fd);
-  for (int i = 0; i < size; i += PGSIZE)
+  for (unsigned i = 0; i < size; i += PGSIZE)
     buffer[i] = 0;
   acquire_filesys ();
   int bytes_read = file_read (file, buffer, size);
@@ -278,7 +276,7 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
   return bytes_read;
 }
 
-int
+static int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
   if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
@@ -330,7 +328,11 @@ sys_mmap (int fd, void *addr)
 
   cur->mapid++;
 
+  // create mmap_entry
   file->mmap_entry = malloc (sizeof (struct mmap_entry));
+  file->mmap_entry->mapid = cur->mapid;
+  file->mmap_entry->file = file;
+  list_init (&file->mmap_entry->fte_list);
 
   off_t ofs = 0;
   // create mmap

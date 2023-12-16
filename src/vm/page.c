@@ -13,7 +13,6 @@ bool
 user_stack_growth (void *fault_addr, void *esp)
 {
   void *upage = pg_round_down (fault_addr);
-  struct thread *t = thread_current ();
   bool writable = true;
   bool success = true;
 
