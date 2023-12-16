@@ -24,7 +24,7 @@ user_stack_growth (void *fault_addr, void *esp)
       // try stack growth
       if (fault_addr >= esp - 32 && upage >= PHYS_BASE - STACK_MAX)
         {
-          struct fte *new_fte = fte_create (upage, writable, PAL_USER);
+          struct fte *new_fte = fte_create (upage, writable);
           ASSERT (new_fte != NULL);
         }
       else

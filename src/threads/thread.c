@@ -23,6 +23,8 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+struct thread *current_thread;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -479,7 +481,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef VM
   t->esp = NULL;
-  t->sys_flag = false;
   t->mapid = 0;
 #endif
 
@@ -540,6 +541,7 @@ thread_schedule_tail (struct thread *prev)
 
   /* Mark us as running. */
   cur->status = THREAD_RUNNING;
+  current_thread = cur;
 
   /* Start new time slice. */
   thread_ticks = 0;

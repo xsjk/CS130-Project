@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include "synch.h"
+#include "threads/pte.h"
 #include <debug.h>
 #include <hash.h>
 #include <list.h>
@@ -102,16 +103,15 @@ struct thread
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
-  uint32_t *pagedir; /* Page directory. */
+  union entry_t *pagedir; /* Page directory. */
   struct process
       *process; /* The user process that is running on this thread */
 #endif
 
 #ifdef VM
   struct hash frame_table; /* Supplemental page table */
-  void *esp;               /* save sp when calling syscall */
-  bool sys_flag;           /* if the page fault is caused by syscall */
-  int mapid;               /* mapid */
+  void *esp; /* save sp when calling syscall, NULL when not in syscall */
+  int mapid; /* mapid */
 #endif
 
   struct thread *parent; /* The creator of this thread */
@@ -119,6 +119,8 @@ struct thread
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
 };
+
+extern struct thread *current_thread;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

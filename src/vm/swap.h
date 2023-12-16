@@ -2,21 +2,14 @@
 #define VM_SWAP_H
 
 #include "devices/block.h"
-#include "threads/thread.h"
-
-struct swap_ele
-{
-  block_sector_t swap_index;
-  struct list_elem swap_elem;
-};
 
 void swap_init (void);
 
-block_sector_t
-swap_find_free (void); // find a free swap block from free_swap_slots
+typedef int swap_id_t;
 
-void swap_free (block_sector_t);         // free a swap block
-block_sector_t swap_write (void *);      // write 8 sectors to swap block
-void swap_read (block_sector_t, void *); // read 8 sectors from swap block
+swap_id_t swap_alloc ();
+void swap_free (swap_id_t);
+swap_id_t swap_write (void *);
+void swap_read (swap_id_t, void *);
 
 #endif /* vm/swap.h */

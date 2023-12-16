@@ -153,6 +153,7 @@ sys_exec (const char __user *cmd)
 {
   user_access_validate_string (cmd);
   int pid = process_execute (cmd);
+  // at this point, the process may already finished
   return pid;
 }
 
@@ -379,9 +380,9 @@ sys_munmap (int mapping)
 static void
 syscall_handler (struct intr_frame *f)
 {
+  struct thread *t = thread_current ();
   user_access_validate (f->esp, sizeof (int) * 4);
-  thread_current ()->esp = f->esp;
-  thread_current ()->sys_flag = true;
+  t->esp = f->esp;
 
   switch (*(int *)f->esp)
     {
@@ -439,8 +440,7 @@ syscall_handler (struct intr_frame *f)
       sys_exit (-1);
     }
 
-  thread_current ()->esp = NULL;
-  thread_current ()->sys_flag = false;
+  t->esp = NULL;
 }
 
 void

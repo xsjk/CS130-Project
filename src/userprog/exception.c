@@ -168,7 +168,7 @@ page_fault (struct intr_frame *f)
 
 #ifdef VM
   struct thread *t = thread_current ();
-  bool in_syscall = t->sys_flag;
+  bool in_syscall = t->esp != NULL;
   if (in_syscall)
     ASSERT (!user);
 
@@ -196,7 +196,6 @@ page_fault (struct intr_frame *f)
       thread_exit ();
       return;
     }
-
 #endif
 
   /* To implement virtual memory, delete the rest of the function

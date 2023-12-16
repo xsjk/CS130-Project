@@ -1,76 +1,76 @@
 #include "swap.h"
+#include "bitmap.h"
+#include "threads/synch.h"
+#include "threads/vaddr.h"
 
-struct list free_swap_slots; // list for swap out block
-struct block *block_entry;   // pointer to swap table
-block_sector_t block_end;    // index for next swap block to use
-struct lock swap_lock;       // lock for swap table
+static struct block *swap_device;
+static struct bitmap *swap_used_map;
+static struct lock swap_lock;
 
+#define BLOCK_PER_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
+
+/**
+ * @brief initalize the swap
+ */
 void
 swap_init (void)
 {
-  list_init (&free_swap_slots);
+  swap_device = block_get_role (BLOCK_SWAP);
+  swap_used_map = bitmap_create (block_size (swap_device) / BLOCK_PER_PAGE);
   lock_init (&swap_lock);
-  block_entry = block_get_role (BLOCK_SWAP);
-  block_end = 0;
 }
 
-block_sector_t
-swap_find_free (void)
-{
-  // if no free block
-  if (list_empty (&free_swap_slots))
-    {
-      block_sector_t swap_index = block_end;
-      block_end += 8;
-      if (block_end >= block_size (block_entry))
-        PANIC ("swap table is full");
-      return swap_index;
-    }
-
-  else
-    {
-      struct list_elem *e = list_pop_front (&free_swap_slots);
-      struct swap_ele *swap = list_entry (e, struct swap_ele, swap_elem);
-      return swap->swap_index;
-    }
-}
-
-void
-swap_free (block_sector_t swap_index)
-{
-  // if delete the last block, then index should be the last block
-  if (swap_index + 8 == block_end)
-    {
-      block_end = swap_index;
-      return;
-    }
-
-  struct swap_ele *swap = malloc (sizeof (struct swap_ele));
-  swap->swap_index = swap_index;
-  list_push_back (&free_swap_slots, &swap->swap_elem);
-}
-
-block_sector_t
-swap_write (void *kpage)
+/**
+ * @brief alloc a block in swap table
+ * @return the swap index (block sector / 8)
+ */
+swap_id_t
+swap_alloc ()
 {
   lock_acquire (&swap_lock);
-  block_sector_t swap_index = swap_find_free ();
-  for (int i = 0; i < 8; i++)
-    {
-      block_write (block_entry, swap_index + i, kpage + i * BLOCK_SECTOR_SIZE);
-    }
+  swap_id_t swap_idx = bitmap_scan_and_flip (swap_used_map, 0, 1, false);
   lock_release (&swap_lock);
-  return swap_index;
+  if (swap_idx == BITMAP_ERROR)
+    PANIC ("Swap if full");
+  return swap_idx;
 }
 
+/**
+ * @brief free a block in swap table
+ * @param swap_idx
+ */
 void
-swap_read (block_sector_t swap_index, void *kpage)
+swap_free (swap_id_t swap_idx)
 {
-  lock_acquire (&swap_lock);
-  for (int i = 0; i < 8; i++)
-    {
-      block_read (block_entry, swap_index + i, kpage + i * BLOCK_SECTOR_SIZE);
-    }
-  swap_free (swap_index);
-  lock_release (&swap_lock);
+  if (!bitmap_all (swap_used_map, swap_idx, 1))
+    ASSERT (bitmap_all (swap_used_map, swap_idx, 1));
+  bitmap_set_multiple (swap_used_map, swap_idx, 1, false);
+}
+
+/**
+ * @brief write a page to swap
+ * @param src the source page
+ * @return block_selector in which the source page is written
+ */
+swap_id_t
+swap_write (void *src)
+{
+  swap_id_t swap_idx = swap_alloc ();
+  for (int i = 0; i < BLOCK_PER_PAGE; i++)
+    block_write (swap_device, swap_idx * BLOCK_PER_PAGE + i,
+                 src + i * BLOCK_SECTOR_SIZE);
+  return swap_idx;
+}
+
+/**
+ * @brief read a page from swap
+ * @param swap_idx the index of the page to read
+ * @param dst the buffer to store the page
+ */
+void
+swap_read (swap_id_t swap_idx, void *dst)
+{
+  for (int i = 0; i < BLOCK_PER_PAGE; i++)
+    block_read (swap_device, swap_idx * BLOCK_PER_PAGE + i,
+                dst + i * BLOCK_SECTOR_SIZE);
 }

@@ -6,6 +6,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/pte.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/gdt.h"
@@ -344,7 +345,6 @@ process_exit (void)
   ASSERT (list_empty (&p->files));
 
 #ifdef VM
-  // hash_destroy (&t->frame_table, page_destroy_action);
   for (struct list_elem *e = list_begin (&p->mmapped_files);
        e != list_end (&p->mmapped_files);)
     {
@@ -662,8 +662,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Get a page of memory. */
 #ifdef VM
-      struct fte *fte = fte_create (upage, writable, PAL_USER);
-      uint8_t *kpage = fte->phys_addr;
+      struct fte *fte = fte_create (upage, writable);
+      uint8_t *kpage = fte->kpage;
 
       /* Load this page */
       if (file_read (file, kpage, page_read_bytes) != (int)page_read_bytes)
@@ -710,8 +710,7 @@ setup_stack (void **esp)
   bool success = false;
 
 #ifdef VM
-  struct fte *fte = fte_create (((uint8_t *)PHYS_BASE) - PGSIZE, true,
-                                PAL_USER | PAL_ZERO);
+  struct fte *fte = fte_create (((uint8_t *)PHYS_BASE) - PGSIZE, true);
   success = fte != NULL;
   if (success)
     *esp = PHYS_BASE;

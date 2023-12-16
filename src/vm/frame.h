@@ -32,8 +32,8 @@ struct fte
   void *upage; // user page
   union
   {
-    void *phys_addr;           // frame
-    block_sector_t swap_index; // swap
+    void *kpage;       // frame
+    swap_id_t swap_id; // swap
   };
 
   uint32_t file_offset;
@@ -47,6 +47,8 @@ struct fte
 
   struct list_elem clock_list_elem; // list element for clock algorithm
   struct list_elem fte_elem;
+
+  struct lock lock; // lock for frame table entry
 };
 
 struct fte *cur_frame_table_find (void *upage);
@@ -64,16 +66,13 @@ void frame_evict (void); // automatically evict a frame
 
 /* -------------------- Frame Table Entry Methods -------------------- */
 
-struct fte *fte_create (void *upage, bool writable, enum palloc_flags flags);
+struct fte *fte_create (void *upage, bool writable);
 void fte_evict (struct fte *fte);
 void fte_unevict (struct fte *fte);
 void fte_destroy (struct fte *fte);
 struct fte *fte_attach_to_file (struct file *file, uint32_t file_offset,
                                 void *upage, bool writable);
 void fte_detach_to_file (struct fte *fte);
-
-void frame_lock_acquire (void); // acquire frame table lock
-void frame_lock_release (void); // release frame table lock
 
 typedef void (*mmap_elem_destroy_func) (struct mmap_entry *mmap_entry);
 

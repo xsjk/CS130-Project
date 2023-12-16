@@ -73,16 +73,8 @@ pd_no (const void *va)
    ignored.
    A PDE or PTE that is initialized to 0 will be interpreted as
    "not present", which is just fine. */
-#define PTE_FLAGS 0x00000fff /* Flag bits. */
-#define PTE_ADDR 0xfffff000  /* Address bits. */
-#define PTE_AVL 0x00000e00   /* Bits available for OS use. */
-#define PTE_P 0x1            /* 1=present, 0=not present. */
-#define PTE_W 0x2            /* 1=read/write, 0=read-only. */
-#define PTE_U 0x4            /* 1=user/kernel, 0=kernel only. */
-#define PTE_A 0x20           /* 1=accessed, 0=not acccessed. */
-#define PTE_D 0x40           /* 1=dirty, 0=not dirty (PTEs only). */
 
-union pte_t
+union entry_t
 {
   struct
   {
@@ -94,55 +86,64 @@ union pte_t
     uint32_t dirty : 1;
     uint32_t _reserved_1 : 2;
     uint32_t available : 3;
-    uint32_t page : 20;
+    uint32_t physical_address : 20;
   };
   uint32_t val;
 };
 
 /* Returns a PDE that points to page table PT. */
-static inline uint32_t
+static inline union entry_t
 pde_create (uint32_t *pt)
 {
   ASSERT (pg_ofs (pt) == 0);
-  return vtop (pt) | PTE_U | PTE_P | PTE_W;
+  union entry_t pde = { .val = vtop (pt) };
+  pde.present = 1;
+  pde.writable = 1;
+  pde.user = 1;
+  return pde;
 }
 
 /* Returns a pointer to the page table that page directory entry
    PDE, which must "present", points to. */
 static inline uint32_t *
-pde_get_pt (uint32_t pde)
+pde_get_pt (union entry_t pde)
 {
-  ASSERT (pde & PTE_P);
-  return ptov (pde & PTE_ADDR);
+  ASSERT (pde.present);
+  return ptov (pde.physical_address << 12);
 }
 
 /* Returns a PTE that points to PAGE.
    The PTE's page is readable.
    If WRITABLE is true then it will be writable as well.
    The page will be usable only by ring 0 code (the kernel). */
-static inline uint32_t
+static inline union entry_t
 pte_create_kernel (void *page, bool writable)
 {
   ASSERT (pg_ofs (page) == 0);
-  return vtop (page) | PTE_P | (writable ? PTE_W : 0);
+  union entry_t pte = { .val = vtop (page) };
+  pte.present = 1;
+  pte.writable = writable;
+  return pte;
 }
 
 /* Returns a PTE that points to PAGE.
    The PTE's page is readable.
    If WRITABLE is true then it will be writable as well.
    The page will be usable by both user and kernel code. */
-static inline uint32_t
+static inline union entry_t
 pte_create_user (void *page, bool writable)
 {
-  return pte_create_kernel (page, writable) | PTE_U;
+  union entry_t pte = pte_create_kernel (page, writable);
+  pte.user = 1;
+  return pte;
 }
 
 /* Returns a pointer to the page that page table entry PTE points
    to. */
 static inline void *
-pte_get_page (uint32_t pte)
+pte_get_page (union entry_t pte)
 {
-  return ptov (pte & PTE_ADDR);
+  return ptov (pte.physical_address << 12);
 }
 
 #endif /* threads/pte.h */

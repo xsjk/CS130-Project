@@ -194,9 +194,7 @@ lock_acquire (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
-  if (!lock_held_by_current_thread (lock))
-    ;
-  bool temp = lock_held_by_current_thread (lock);
+  ASSERT (!lock_held_by_current_thread (lock))
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -296,9 +294,11 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable ();
   sema_init (&waiter.semaphore, 0);
   list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
+  intr_set_level (old_level);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
 }
