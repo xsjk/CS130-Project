@@ -628,9 +628,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->true_priority = priority;
   t->magic = THREAD_MAGIC;
-  t->parent = t == initial_thread ? NULL : thread_current ();
 
 #ifdef USERPROG
+  t->parent = t == initial_thread ? NULL : thread_current ();
   t->pagedir = NULL;
   t->process
       = t == initial_thread ? (struct process *)(t + 1) : new_process (t);
