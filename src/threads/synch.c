@@ -436,8 +436,7 @@ bool
 lock_held_by_current_thread (const struct lock *lock)
 {
   ASSERT (lock != NULL);
-  volatile bool held = thread_current () == lock->holder;
-  return held;
+  return thread_current () == lock->holder;
 }
 
 /* One semaphore in a list. */

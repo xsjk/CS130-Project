@@ -11,7 +11,7 @@ static void do_touch (const char *format, ...) PRINTF_FORMAT (1, 2);
 void
 make_tree (int at, int bt, int ct, int dt)
 {
-  char try[128];
+  char trial[128];
   int a, b, c, d;
   int fd;
 
@@ -34,9 +34,9 @@ make_tree (int at, int bt, int ct, int dt)
     }
   quiet = false;
 
-  snprintf (try, sizeof try, "/%d/%d/%d/%d", 0, bt - 1, 0, dt - 1);
-  CHECK ((fd = open (try)) > 1, "open \"%s\"", try);
-  msg ("close \"%s\"", try);
+  snprintf (trial, sizeof trial, "/%d/%d/%d/%d", 0, bt - 1, 0, dt - 1);
+  CHECK ((fd = open (trial)) > 1, "open \"%s\"", trial);
+  msg ("close \"%s\"", trial);
   close (fd);
 }
 

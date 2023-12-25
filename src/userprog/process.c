@@ -285,7 +285,9 @@ process_close_all_files (struct list *files)
     {
       struct file *f = list_entry (e, struct file, elem);
       ASSERT (is_file (f));
+#ifdef VM
       ASSERT (f->mmap_entry == NULL);
+#endif
       struct process *onwer = file_get_owner (f);
       ASSERT (is_process (onwer));
       e = list_remove (e);

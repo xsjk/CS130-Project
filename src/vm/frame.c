@@ -409,7 +409,7 @@ fte_destroy (struct fte *fte)
       if (pagedir_is_dirty (fte->owner->pagedir, fte->upage))
         {
           struct file *file = fte->mmap_entry->file;
-          // ASSERT (is_file (file));
+          ASSERT (is_file (file));
           file_write_at (file, fte->upage, fte->size, fte->file_offset);
         }
     }

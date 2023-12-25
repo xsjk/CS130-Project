@@ -3,6 +3,7 @@
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "threads/thread.h"
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
@@ -115,6 +116,62 @@ filesys_remove (const char *name)
   dir_close (dir);
 
   return success;
+}
+
+/**
+ * @brief Creates the directory named dir, which may be relative or absolute.
+ * @param name the name of the directory
+ * @return true if successful, false on failure. Fails if dir already
+ * exists or if any directory name in dir, besides the last, does not already
+ * exist. That is, mkdir("/a/b/c") succeeds only if /a/b already exists and
+ * /a/b/c does not.
+ */
+bool
+filesys_mkdir (const char *name)
+{
+}
+
+/**
+ * @brief Changes the current working directory of the process to dir, which
+ * may be relative or absolute.
+ * @param name name of the directory
+ * @return true if successful, false on failure.
+ */
+bool
+filesys_chdir (const char *name)
+{
+}
+
+/**
+ * @brief Reads a directory entry from file descriptor fd, which must represent
+ * a directory.
+ * @param dir
+ * @param name
+ * @return true if successful, false on failure. If successful, stores the
+ * null-terminated file name in name, which must have room for READDIR_MAX_LEN
+ * + 1 bytes, and returns true. If no entries are left in the directory,
+ * returns false.
+ * @note . and .. should not be returned by readdir.
+ * @note If the directory changes while it is open, then it is
+ * acceptable for some entries not to be read at all or to be read multiple
+ * times. Otherwise, each directory entry should be read once, in any order.
+ * @note READDIR_MAX_LEN is defined in lib/user/syscall.h. If your file
+ * system supports longer file names than the basic file system, you should
+ * increase this value from the default of 14.
+ */
+bool
+filesys_readdir (struct dir *dir, char name[READDIR_MAX_LEN + 1])
+{
+}
+
+/**
+ * @brief get inode number of fd
+ * @param dir
+ * @return
+ */
+int
+filesys_inumber (struct dir *dir)
+{
 }
 
 /* Formats the file system. */

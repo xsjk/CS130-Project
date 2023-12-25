@@ -313,7 +313,7 @@ run_actions (char **argv)
   /* An action. */
   struct action
   {
-    char *name;                     /* Action name. */
+    const char *name;               /* Action name. */
     int argc;                       /* # of args, including action name. */
     void (*function) (char **argv); /* Function to execute action. */
   };

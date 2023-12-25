@@ -21,10 +21,12 @@
 
 #define __user
 
-/* Reads a byte at user virtual address UADDR.
-   UADDR must be below PHYS_BASE.
-   Returns the byte value if successful, -1 if a segfault
-   occurred. */
+/**
+ * @brief Read a byte at user virtual address `uaddr`.
+ * @note `udst` must be below PHYS_BASE.
+ * @param uaddr the address to read from
+ * @return the byte value if successful, -1 if a segfault occurred.
+ */
 NO_INLINE int
 try_load (const uint8_t __user *uaddr)
 {
@@ -37,9 +39,13 @@ try_load (const uint8_t __user *uaddr)
   return result;
 }
 
-/* Writes BYTE to user address UDST.
-   UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
+/**
+ * @brief Writes to user address.
+ * @note `udst` must be below PHYS_BASE.
+ * @param udst the destination for user to write
+ * @param byte the byte to write
+ * @return true if successful, false if a segfault occurred.
+ */
 NO_INLINE bool
 try_store (uint8_t __user *udst, uint8_t byte)
 {
@@ -52,6 +58,13 @@ try_store (uint8_t __user *udst, uint8_t byte)
   return error_code != -1;
 }
 
+/**
+ * @brief copy `size` bytes from `src` to `dst`
+ * @param dst destination
+ * @param src source
+ * @param size size to copy
+ * @return true if successful, false if a segfault occurred.
+ */
 static bool
 copy_from_user (uint8_t *dst, const uint8_t __user *src, size_t size)
 {
@@ -80,16 +93,103 @@ copy_to_user (uint8_t __user *dst, const uint8_t *src, size_t size)
   return true;
 }
 
+/**
+ * @brief check if `size` bytes from `addr` is accessible by kernel
+ * @param addr
+ * @param size
+ * @return true if accessible, false if inaccessible
+ */
 bool
-kernel_has_access (uint8_t __user *uaddr, size_t size)
+kernel_has_access (void __user *addr, size_t size)
 {
-  return try_load (uaddr) != -1 && try_load (uaddr + size - 1) != -1;
+  return try_load (addr) != -1 && try_load (addr + size - 1) != -1;
 }
 
+/**
+ * @brief check if `size` bytes from `uaddr` if accessible by user
+ * @param uaddr
+ * @param size
+ * @return true if accessible, false if inaccessible
+ */
 bool
-user_has_access (uint8_t __user *uaddr, size_t size)
+user_has_access (void __user *uaddr, size_t size)
 {
   return uaddr + size < PHYS_BASE && kernel_has_access (uaddr, size);
+}
+
+static void sys_exit (int status);
+
+/**
+ * @brief check if `size` bytes from `addr` is accessible by kernel, if not
+ * then exit(-1)
+ * @param addr
+ * @param size
+ */
+static void
+kernel_access_validate (void *addr, size_t size)
+{
+  if (!kernel_has_access (addr, size))
+    sys_exit (-1);
+}
+
+/**
+ * @brief check if `size` bytes from `uaddr` is accessible by user, if not then
+ * exit(-1)
+ * @param uaddr
+ * @param size
+ */
+static void
+user_access_validate (void __user *uaddr, size_t size)
+{
+  if (!user_has_access (uaddr, size))
+    sys_exit (-1);
+}
+
+/**
+ * @brief check if the string at `str` is accessible by user, if not then
+ * exit(-1)
+ * @param str
+ */
+static void
+user_access_validate_string (const char __user *str)
+{
+  int byte;
+  do
+    {
+      if (str >= PHYS_BASE || (byte = try_load (str++)) == -1)
+        sys_exit (-1);
+    }
+  while (byte != 0);
+}
+
+/**
+ * @brief check if `fd` represents a file of this thread, if not then exit(-1)
+ * @param fd
+ * @return the pointer to the file struct
+ */
+static struct file *
+file_owner_validate (int fd)
+{
+  struct file *file = file_from_fd (fd);
+  kernel_access_validate (file, sizeof *file);
+  if (!is_file (file))
+    sys_exit (-1);
+  return file;
+}
+
+/**
+ * @brief check if `fd` represents a dir, if not then exit(-1)
+ * @param fd
+ * @return the pointer to the dir struct
+ */
+static struct dir *
+dir_validate (int fd)
+{
+  struct dir *dir = dir_from_fd (fd);
+  kernel_access_validate (dir, sizeof *dir);
+  if (!is_dir (dir))
+    sys_exit (-1);
+  return dir;
 }
 
 /*************************/
@@ -112,43 +212,6 @@ sys_exit (int status)
   process_current ()->exit_status = status;
   thread_exit ();
   NOT_REACHED ();
-}
-
-static void
-kernel_access_validate (void *addr, size_t size)
-{
-  if (try_load (addr) == -1 || try_load (addr + size - 1) == -1)
-    sys_exit (-1);
-}
-
-static void
-user_access_validate (void __user *uaddr, size_t size)
-{
-  if (uaddr + size >= PHYS_BASE)
-    sys_exit (-1);
-  kernel_access_validate (uaddr, size);
-}
-
-static void
-user_access_validate_string (const char __user *uaddr)
-{
-  int byte;
-  do
-    {
-      if (uaddr >= PHYS_BASE || (byte = try_load (uaddr++)) == -1)
-        sys_exit (-1);
-    }
-  while (byte != 0);
-}
-
-static struct file *
-file_owner_validate (int fd)
-{
-  struct file *file = file_from_fd (fd);
-  kernel_access_validate (file, sizeof (struct file));
-  if (!is_file (file))
-    sys_exit (-1);
-  return file;
 }
 
 static int
@@ -385,6 +448,47 @@ sys_munmap (int mapping)
 
 #endif
 
+static bool
+sys_chdir (const char __user *path)
+{
+  user_access_validate_string (path);
+  return filesys_chdir (path);
+}
+
+static bool
+sys_mkdir (const char __user *path)
+{
+  user_access_validate_string (path);
+  return filesys_mkdir (path);
+}
+
+static bool
+sys_readdir (int fd, char __user *name)
+{
+  user_access_validate (name, READDIR_MAX_LEN + 1);
+  struct dir *dir = dir_validate (fd);
+  return filesys_readdir (dir, name);
+}
+
+static bool
+sys_isdir (int fd)
+{
+  struct file *file = file_from_fd (fd);
+  if (kernel_has_access (file, sizeof *file) && is_file (file))
+    return false;
+  struct dir *dir = dir_from_fd (fd);
+  if (kernel_has_access (dir, sizeof *dir) && is_dir (dir))
+    return true;
+  sys_exit (-1); // neither file nor dir
+}
+
+static int
+sys_inumber (int fd)
+{
+  struct dir *dir = dir_validate (fd);
+  return filesys_inumber (dir);
+}
+
 /*************************/
 /* System call interface */
 /*************************/
@@ -397,59 +501,71 @@ syscall_handler (struct intr_frame *f)
 #ifdef VM
   t->esp = f->esp;
 #endif
-
-  switch (*(int *)f->esp)
+  int *argv = f->esp;
+  switch (argv[0])
     {
     case SYS_HALT:
       sys_halt ();
       break;
     case SYS_EXIT:
-      sys_exit (*(int *)(f->esp + 4));
+      sys_exit (argv[1]);
       break;
     case SYS_EXEC:
-      f->eax = sys_exec (*(const char **)(f->esp + 4));
+      f->eax = sys_exec (argv[1]);
       break;
     case SYS_WAIT:
-      f->eax = sys_wait (*(int *)(f->esp + 4));
+      f->eax = sys_wait (argv[1]);
       break;
     case SYS_CREATE:
-      f->eax = sys_create (*(const char **)(f->esp + 4),
-                           *(unsigned *)(f->esp + 8));
+      f->eax = sys_create (argv[1], argv[2]);
       break;
     case SYS_REMOVE:
-      f->eax = sys_remove (*(const char **)(f->esp + 4));
+      f->eax = sys_remove (argv[1]);
       break;
     case SYS_OPEN:
-      f->eax = sys_open (*(const char **)(f->esp + 4));
+      f->eax = sys_open (argv[1]);
       break;
     case SYS_FILESIZE:
-      f->eax = sys_filesize (*(int *)(f->esp + 4));
+      f->eax = sys_filesize (argv[1]);
       break;
     case SYS_READ:
-      f->eax = sys_read (*(int *)(f->esp + 4), *(void **)(f->esp + 8),
-                         *(unsigned *)(f->esp + 12));
+      f->eax = sys_read (argv[1], argv[2], argv[3]);
       break;
     case SYS_WRITE:
-      f->eax = sys_write (*(int *)(f->esp + 4), *(void **)(f->esp + 8),
-                          *(unsigned *)(f->esp + 12));
+      f->eax = sys_write (argv[1], argv[2], argv[3]);
       break;
     case SYS_SEEK:
-      sys_seek (*(int *)(f->esp + 4), *(unsigned *)(f->esp + 8));
+      sys_seek (argv[1], argv[2]);
       break;
     case SYS_TELL:
-      f->eax = sys_tell (*(int *)(f->esp + 4));
+      f->eax = sys_tell (argv[1]);
       break;
     case SYS_CLOSE:
-      sys_close (*(int *)(f->esp + 4));
+      sys_close (argv[1]);
       break;
 #ifdef VM
     case SYS_MMAP:
-      f->eax = sys_mmap (*(int *)(f->esp + 4), *(void **)(f->esp + 8));
+      f->eax = sys_mmap (argv[1], argv[2]);
       break;
     case SYS_MUNMAP:
-      sys_munmap (*(int *)(f->esp + 4));
+      sys_munmap (argv[1]);
       break;
 #endif
+    case SYS_CHDIR:
+      f->eax = sys_chdir (argv[1]);
+      break;
+    case SYS_MKDIR:
+      f->eax = sys_mkdir (argv[1]);
+      break;
+    case SYS_READDIR:
+      f->eax = sys_readdir (argv[1], argv[2]);
+      break;
+    case SYS_ISDIR:
+      f->eax = sys_isdir (argv[1]);
+      break;
+    case SYS_INUMBER:
+      f->eax = sys_inumber (argv[1]);
+      break;
     default:
       sys_exit (-1);
     }

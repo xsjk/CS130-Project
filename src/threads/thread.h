@@ -122,6 +122,11 @@ struct thread
   int mapid; /* mapid */
 #endif
 
+#ifdef FILESYS
+  // TODO: initialize cwd
+  struct dir *cwd;
+#endif
+
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
 

@@ -82,6 +82,35 @@
         "loadAll": true,
         "exceptionList": ""
       }
+    },
+    {
+      "name": "[P4] Debug a Test",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/filesys/build/kernel.o",
+      "preLaunchTask": "[P4] Run Test in GDB mode",
+      "miDebuggerServerAddress": "localhost:1234",
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/src/filesys/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "text": "source ${workspaceFolder}/src/filesys/build/.loadsymbols",
+          "description": "Import user program",
+          "ignoreFailures": false
+        }
+      ],
+      "symbolLoadInfo": {
+        "loadAll": true,
+        "exceptionList": ""
+      }
     }
   ]
 }

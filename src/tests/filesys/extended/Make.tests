@@ -57,6 +57,21 @@ $(foreach raw_test,$(raw_tests),$(eval tests/filesys/extended/$(raw_test)-persis
 
 TARS = $(addsuffix .tar,$(tests/filesys/extended_TESTS))
 
+tests/filesys/extended/%.debug: kernel.bin
+	rm -f tmp.dsk
+	pintos-mkdisk tmp.dsk --filesys-size=2
+	@rm -f .loadsymbols
+	@for prog in $(PUTFILES); \
+		do objdump -h $$prog | \
+		awk -v prog=$$prog \
+			'BEGIN { pwd = ENVIRON["PWD"] } \
+			/.text/ \
+			{ print "add-symbol-file " pwd  "/" prog  " 0x"$$4 }' >> .loadsymbols; \
+	done
+	$(DEBUGCMD)
+	$(GETCMD)
+	rm -f tmp.dsk
+
 clean::
 	rm -f $(TARS)
 	rm -f tests/filesys/extended/can-rmdir-cwd

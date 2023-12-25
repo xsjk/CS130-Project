@@ -2,6 +2,7 @@
 #define FILESYS_DIRECTORY_H
 
 #include "devices/block.h"
+#include <filesys/off_t.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -12,6 +13,15 @@
 #define NAME_MAX 14
 
 struct inode;
+
+/* A directory. */
+struct dir
+{
+  struct inode *inode; /* Backing store. */
+  off_t pos;           /* Current position. */
+  int magic;
+  int fd;
+};
 
 /* Opening and closing directories. */
 bool dir_create (block_sector_t sector, size_t entry_cnt);
@@ -26,5 +36,8 @@ bool dir_lookup (const struct dir *, const char *name, struct inode **);
 bool dir_add (struct dir *, const char *name, block_sector_t);
 bool dir_remove (struct dir *, const char *name);
 bool dir_readdir (struct dir *, char name[NAME_MAX + 1]);
+
+bool is_dir (struct dir *);
+struct dir *dir_from_fd (int fd);
 
 #endif /* filesys/directory.h */

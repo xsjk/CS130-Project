@@ -22,7 +22,7 @@ static void do_remove (const char *format, ...) PRINTF_FORMAT (1, 2);
 static void
 remove_tree (int at, int bt, int ct, int dt)
 {
-  char try[128];
+  char trial[128];
   int a, b, c, d;
 
   msg ("removing /0/0/0/0 through /%d/%d/%d/%d...", at - 1, bt - 1, ct - 1,
@@ -44,8 +44,8 @@ remove_tree (int at, int bt, int ct, int dt)
     }
   quiet = false;
 
-  snprintf (try, sizeof (try), "/%d/%d/%d/%d", at - 1, 0, ct - 1, 0);
-  CHECK (open (try) == -1, "open \"%s\" (must return -1)", try);
+  snprintf (trial, sizeof (trial), "/%d/%d/%d/%d", at - 1, 0, ct - 1, 0);
+  CHECK (open (trial) == -1, "open \"%s\" (must return -1)", trial);
 }
 
 static void
