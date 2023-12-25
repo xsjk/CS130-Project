@@ -2,8 +2,10 @@
 #define THREADS_THREAD_H
 
 #include "synch.h"
+#include "threads/pte.h"
 #include <debug.h>
 #include <fixed_point.h>
+#include <hash.h>
 #include <list.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -87,6 +89,7 @@ struct process;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
 struct thread
 {
   /* Owned by thread.c. */
@@ -107,14 +110,16 @@ struct thread
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
-  uint32_t *pagedir; /* Page directory. */
+  union entry_t *pagedir; /* Page directory. */
   struct process
       *process;          /* The user process that is running on this thread */
   struct thread *parent; /* The creator of this thread */
 #endif
 
 #ifdef VM
-  struct hash *spt; /* Supplemental page table */
+  struct hash frame_table; /* Supplemental page table */
+  void *esp; /* save sp when calling syscall, NULL when not in syscall */
+  int mapid; /* mapid */
 #endif
 
   /* Owned by thread.c. */
@@ -124,6 +129,8 @@ struct thread
   int nice;
   fixed_point recent_cpu;
 };
+
+extern struct thread *current_thread;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

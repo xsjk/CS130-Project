@@ -25,6 +25,8 @@ static fixed_point load_avg;
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+struct thread *current_thread;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -202,6 +204,10 @@ thread_create (const char *name, int priority, thread_func *function,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+#ifdef VM
+  cur_frame_table_init (&t->frame_table);
+#endif
 
   return tid;
 }
@@ -644,6 +650,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->nice = 0;
   t->recent_cpu = fp_create (0);
 
+#ifdef VM
+  t->esp = NULL;
+  t->mapid = 0;
+#endif
+
   enum intr_level old_level = intr_disable ();
   list_insert_ordered (&all_list, &t->allelem, thread_priority_greater, NULL);
   intr_set_level (old_level);
@@ -701,6 +712,7 @@ thread_schedule_tail (struct thread *prev)
 
   /* Mark us as running. */
   cur->status = THREAD_RUNNING;
+  current_thread = cur;
 
   /* Start new time slice. */
   thread_ticks = 0;

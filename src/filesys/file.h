@@ -18,6 +18,7 @@ struct file
   off_t pos;           /* Current position. */
   bool deny_write : 1; /* Has file_deny_write() been called? */
   int magic : 31;
+  struct mmap_entry *mmap_entry;
 #ifdef USERPROG
   struct list_elem elem;
   int fd;

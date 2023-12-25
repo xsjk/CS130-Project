@@ -2,6 +2,7 @@
 #include "threads/loader.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
 #include <bitmap.h>
 #include <debug.h>
 #include <inttypes.h>
@@ -61,12 +62,17 @@ palloc_init (size_t user_page_limit)
              "user pool");
 }
 
-/* Obtains and returns a group of PAGE_CNT contiguous free pages.
+/**
+ * @brief Obtains and returns a group of PAGE_CNT contiguous free pages.
    If PAL_USER is set, the pages are obtained from the user pool,
    otherwise from the kernel pool.  If PAL_ZERO is set in FLAGS,
    then the pages are filled with zeros.  If too few pages are
    available, returns a null pointer, unless PAL_ASSERT is set in
-   FLAGS, in which case the kernel panics. */
+   FLAGS, in which case the kernel panics.
+ * @param flags
+ * @param page_cnt the number of contiguous page to alloc
+ * @return the starting address of the allocation
+ */
 void *
 palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
 {
@@ -100,20 +106,48 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt)
   return pages;
 }
 
-/* Obtains a single free page and returns its kernel virtual
-   address.
-   If PAL_USER is set, the page is obtained from the user pool,
-   otherwise from the kernel pool.  If PAL_ZERO is set in FLAGS,
-   then the page is filled with zeros.  If no pages are
-   available, returns a null pointer, unless PAL_ASSERT is set in
-   FLAGS, in which case the kernel panics. */
+/**
+ * @brief Obtains a single free page and returns its kernel virtual address.
+ * If PAL_USER is set, the page is obtained from the user pool,
+ * otherwise from the kernel pool.  If PAL_ZERO is set in FLAGS,
+ * then the page is filled with zeros.  If no pages are
+ * available, returns a null pointer, unless PAL_ASSERT is set in
+ * FLAGS, in which case the kernel panics.
+ * @param flags
+ * @return the pointer to the page obtained, NULL if no page is available
+ */
 void *
 palloc_get_page (enum palloc_flags flags)
 {
   return palloc_get_multiple (flags, 1);
 }
 
-/* Frees the PAGE_CNT pages starting at PAGES. */
+#ifdef VM
+
+/**
+ * @brief force obtain a page by eviction if necessary
+ * @param flags
+ * @return the pointer to the page obtained
+ */
+void *
+palloc_get_page_force (enum palloc_flags flags)
+{
+  void *ptr = palloc_get_page (flags);
+  while (ptr == NULL)
+    {
+      frame_evict ();
+      ptr = palloc_get_page (flags);
+    }
+  return ptr;
+}
+
+#endif
+
+/**
+ * @brief free multiple pages
+ * @param pages the pointer to the first page
+ * @param page_cnt the number of pages to free
+ */
 void
 palloc_free_multiple (void *pages, size_t page_cnt)
 {
@@ -148,9 +182,14 @@ palloc_free_page (void *page)
   palloc_free_multiple (page, 1);
 }
 
-/* Initializes pool P as starting at START and ending at END,
-   naming it NAME for debugging purposes. */
-static void
+/**
+ * @brief initialize a pool
+ * @param p the pool to initialize
+ * @param base the base address of the pool
+ * @param page_cnt the number of pages in the pool
+ * @param name the name of the pool
+ */
+void
 init_pool (struct pool *p, void *base, size_t page_cnt, const char *name)
 {
   /* We'll put the pool's used_map at its base.
@@ -169,9 +208,13 @@ init_pool (struct pool *p, void *base, size_t page_cnt, const char *name)
   p->base = base + bm_pages * PGSIZE;
 }
 
-/* Returns true if PAGE was allocated from POOL,
-   false otherwise. */
-static bool
+/**
+ * @brief check if a page is from a pool
+ * @param pool
+ * @param page
+ * @return true if the page is from the pool
+ */
+bool
 page_from_pool (const struct pool *pool, void *page)
 {
   size_t page_no = pg_no (page);

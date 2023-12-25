@@ -1,6 +1,8 @@
 #include "filesys/file.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
+#include "vm/frame.h"
 #include <debug.h>
 
 /* Identifies an file. */
@@ -30,6 +32,9 @@ file_open (struct inode *inode)
       file->elem.next = NULL;
       file_set_owner (file);
 #endif
+#ifdef VM
+      file->mmap_entry = NULL;
+#endif
       return file;
     }
   else
@@ -54,6 +59,10 @@ file_close (struct file *file)
 {
   if (file != NULL)
     {
+#ifdef VM
+      if (file->mmap_entry != NULL)
+        mmap_destroy (file->mmap_entry, fte_detach_from_file);
+#endif
       file_allow_write (file);
       inode_close (file->inode);
       free (file);
@@ -182,19 +191,19 @@ file_tell (struct file *file)
 struct process *
 file_get_owner (struct file *file)
 {
-  return (struct process *)((char *)file - file->fd);
+  return (struct process *)((char *)file - file->fd + 0x40000000);
 }
 
 void
 file_set_owner (struct file *file)
 {
-  file->fd = (char *)file - (char *)process_current ();
+  file->fd = (char *)file - (char *)process_current () + 0x40000000;
 }
 
 struct file *
 file_from_fd (int fd)
 {
-  return (struct file *)((char *)process_current () + fd);
+  return (struct file *)((char *)process_current () + fd - 0x40000000);
 }
 
 #endif

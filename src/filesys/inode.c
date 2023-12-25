@@ -220,6 +220,10 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       if (chunk_size <= 0)
         break;
 
+      // trigger page fault to preload the page if necessary
+      buffer[bytes_read] = 0;
+      buffer[bytes_read + chunk_size - 1] = 0;
+
       if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
         {
           /* Read full sector directly into caller's buffer. */

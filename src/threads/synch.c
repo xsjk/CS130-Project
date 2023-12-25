@@ -436,8 +436,8 @@ bool
 lock_held_by_current_thread (const struct lock *lock)
 {
   ASSERT (lock != NULL);
-
-  return lock->holder == thread_current ();
+  volatile bool held = thread_current () == lock->holder;
+  return held;
 }
 
 /* One semaphore in a list. */
@@ -506,6 +506,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   intr_set_level (old_level);
 
   lock_release (lock);
+  intr_set_level (old_level);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
 }
