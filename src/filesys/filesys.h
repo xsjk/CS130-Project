@@ -1,7 +1,9 @@
 #ifndef FILESYS_FILESYS_H
 #define FILESYS_FILESYS_H
 
+#include "directory.h"
 #include "filesys/off_t.h"
+#include "user/syscall.h"
 #include <stdbool.h>
 
 /* Sectors of system file inodes. */
@@ -17,10 +19,13 @@ bool filesys_create (const char *name, off_t initial_size);
 struct file *filesys_open (const char *name);
 bool filesys_remove (const char *name);
 
-#ifdef USERPROG
+bool filesys_mkdir (const char *name);
+bool filesys_chdir (const char *name);
+bool filesys_readdir (struct dir *, char name[READDIR_MAX_LEN + 1]);
+int filesys_inumber (struct dir *);
+
 void acquire_filesys (void);
 void release_filesys (void);
 bool has_acquired_filesys (void);
-#endif
 
 #endif /* filesys/filesys.h */

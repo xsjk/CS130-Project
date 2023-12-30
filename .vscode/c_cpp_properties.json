@@ -8,7 +8,11 @@
         "${workspaceFolder}/src/lib/kernel",
         "${workspaceFolder}/src/lib/user"
       ],
-      "defines": ["USERPROG"],
+      "defines": [
+        "USERPROG",
+        "FILESYS",
+        "VM"
+      ],
       "compilerPath": "/usr/bin/gcc",
       "intelliSenseMode": "linux-gcc-x64"
     }

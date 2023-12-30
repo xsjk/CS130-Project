@@ -6,12 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 
-/* A directory. */
-struct dir
+#define DIR_MAGIC 0x726964
+
+bool
+is_dir (struct dir *dir)
 {
-  struct inode *inode; /* Backing store. */
-  off_t pos;           /* Current position. */
-};
+  return dir->magic == DIR_MAGIC;
+}
 
 /* A single directory entry. */
 struct dir_entry
@@ -39,6 +40,7 @@ dir_open (struct inode *inode)
     {
       dir->inode = inode;
       dir->pos = 0;
+      dir->magic = DIR_MAGIC;
       return dir;
     }
   else
@@ -232,4 +234,10 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         }
     }
   return false;
+}
+
+struct dir *
+dir_from_fd (int fd)
+{
+  return (struct dir *)(fd + 0xc0000000);
 }
