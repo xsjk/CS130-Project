@@ -10,8 +10,7 @@
       ],
       "defines": [
         "USERPROG",
-        "FILESYS",
-        "VM"
+        "FILESYS"
       ],
       "compilerPath": "/usr/bin/gcc",
       "intelliSenseMode": "linux-gcc-x64"
