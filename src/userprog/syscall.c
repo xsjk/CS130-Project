@@ -342,8 +342,7 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 static int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
-  if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
-    sys_exit (-1);
+  user_access_validate (buffer, size);
 
   // stdout
   if (fd == STDOUT_FILENO)
