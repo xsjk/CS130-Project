@@ -85,6 +85,14 @@ filesys_parsing_path (const char *path, char *file_name, struct dir **dir,
   char *token, *save_ptr;
   char *next_token = strtok_r (path_copy, "/", &save_ptr);
 
+  // current dir is root directory
+  if (next_token == NULL)
+    {
+      file_name[0] = '.';
+      file_name[1] = '\0';
+      return true;
+    }
+
   // check if the token is valid
   if (strlen (next_token) > NAME_MAX)
     {
@@ -116,8 +124,9 @@ filesys_parsing_path (const char *path, char *file_name, struct dir **dir,
           free (path_copy);
           return false;
         }
+      dir_close (*dir);
+      *dir = next_dir;
     }
-
   strlcpy (file_name, token, strlen (token) + 1);
   free (path_copy);
   return true;
@@ -161,7 +170,6 @@ bool
 filesys_create (const char *name, off_t initial_size)
 {
 #ifdef FILESYS
-  // #if false
   struct dir *dir;
   char file_name[NAME_MAX + 1];
   bool is_file;
@@ -358,7 +366,7 @@ bool
 filesys_readdir (int fd, char *name)
 {
 #ifdef FILESYS
-  return dir_readdir (fd, name);
+  // return dir_readdir (dir, name);
 #endif
 }
 
@@ -370,8 +378,6 @@ filesys_readdir (int fd, char *name)
 int
 filesys_inumber (int fd)
 {
-#ifdef FILESYS
-#endif
 }
 
 /* Formats the file system. */

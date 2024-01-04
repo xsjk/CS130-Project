@@ -3,6 +3,7 @@
 
 #include "devices/block.h"
 #include <filesys/off_t.h>
+#include <list.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -21,6 +22,16 @@ struct dir
   off_t pos;           /* Current position. */
   int magic;
   int fd;
+  int count; /* subfile_num + subdir_num*/
+  struct list_elem dir_elem;
+};
+
+/* A single directory entry. */
+struct dir_entry
+{
+  block_sector_t inode_sector; /* Sector number of header. */
+  char name[NAME_MAX + 1];     /* Null terminated file name. */
+  bool in_use;                 /* In use or free? */
 };
 
 /* Opening and closing directories. */

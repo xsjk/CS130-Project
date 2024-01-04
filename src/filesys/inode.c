@@ -8,31 +8,6 @@
 #include <round.h>
 #include <string.h>
 
-/* Identifies an inode. */
-#define INODE_MAGIC 0x494e4f44
-
-/* DIRECT_POINTERS, INDIRECT_BLOCKS, IINDIRECT_BLOCKS sum up to 126 */
-#define DIRECT_POINTERS 120
-#define INDIRECT_BLOCKS 5
-#define IINDIRECT_BLOCKS 1
-
-#define POINTERS_PER_BLOCK (BLOCK_SECTOR_SIZE / 4)
-#define INDIRECT_POINTERS (INDIRECT_BLOCKS * POINTERS_PER_BLOCK)
-#define IINDIRECT_POINTERS                                                    \
-  (IINDIRECT_BLOCKS * POINTERS_PER_BLOCK * POINTERS_PER_BLOCK)
-
-/* On-disk inode.
-   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
-{
-  off_t length;                               /* File size in bytes. */
-  block_sector_t direct[DIRECT_POINTERS];     /* direct pointers */
-  block_sector_t indirect[INDIRECT_BLOCKS];   /* indirect pointer */
-  block_sector_t iindirect[IINDIRECT_BLOCKS]; /* doubly indirect pointer */
-  bool is_dir : 1;     /* where the inode represents a disk */
-  unsigned magic : 31; /* Magic number. */
-};
-
 /**
  * @brief Get the number of sectors to allocate for an inode `size` bytes long.
  * @param size
@@ -43,18 +18,6 @@ bytes_to_sectors (off_t size)
 {
   return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
 }
-
-/* In-memory inode. */
-struct inode
-{
-  struct list_elem elem; /* Element in inode list. */
-  block_sector_t sector; /* Sector number of disk location. */
-  int open_cnt;          /* Number of openers. */
-  bool removed;          /* True if deleted, false otherwise. */
-  int deny_write_cnt;    /* 0: writes ok, >0: deny writes. */
-  struct lock lock;
-  struct inode_disk data; /* Inode content. */
-};
 
 /**
  * @brief Get a block device sector that contains byte offset `pos` within
@@ -307,6 +270,7 @@ inode_open (block_sector_t sector)
 
   /* Allocate memory. */
   inode = malloc (sizeof *inode);
+  // printf ("open%d\n", sector);
   if (inode == NULL)
     return NULL;
 
@@ -425,10 +389,12 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed)
         {
+          // TODO
+          block_write (fs_device, inode->sector, &inode->data);
           free_map_release (inode->sector, 1);
           inode_disk_close (&inode->data);
         }
-
+      // printf ("close%d\n", inode->sector);
       free (inode);
     }
 }

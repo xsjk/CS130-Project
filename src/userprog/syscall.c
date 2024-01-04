@@ -181,12 +181,13 @@ file_owner_validate (int fd)
  * @return the pointer to the dir struct
  */
 static struct dir *
-dir_validate (int fd)
+dir_get (int fd)
 {
   struct dir *dir = dir_from_fd (fd);
-  kernel_access_validate (dir, sizeof *dir);
+  if (!kernel_has_access (dir, sizeof *dir))
+    return NULL;
   if (!is_dir (dir))
-    sys_exit (-1);
+    return NULL;
   return dir;
 }
 
@@ -267,7 +268,7 @@ sys_open (const char *path)
     {
       fd = dir->fd;
       dir_reopen (dir);
-      thread_current ()->cwd = dir;
+      list_push_back (&process_current ()->dirs, &dir->dir_elem);
     }
 
 done:
@@ -319,11 +320,25 @@ sys_tell (int fd)
 static void
 sys_close (int fd)
 {
-  struct file *file = file_owner_validate (fd);
-  acquire_filesys ();
-  list_remove (&file->elem);
-  file_close (file);
-  release_filesys ();
+  struct file *file = file_from_fd (fd);
+  if (kernel_has_access (file, sizeof *file) && is_file (file))
+    {
+      acquire_filesys ();
+      list_remove (&file->elem);
+      file_close (file);
+      release_filesys ();
+      return;
+    }
+  struct dir *dir = dir_from_fd (fd);
+  if (kernel_has_access (dir, sizeof *dir) && is_dir (dir))
+    {
+      acquire_filesys ();
+      list_remove (&dir->dir_elem);
+      dir_close (dir);
+      release_filesys ();
+      return;
+    }
+  sys_exit (-1);
 }
 
 static int
@@ -390,8 +405,10 @@ static bool
 sys_readdir (int fd, char __user *name)
 {
   user_access_validate (name, READDIR_MAX_LEN + 1);
-  struct dir *dir = dir_validate (fd);
-  return filesys_readdir (dir, name);
+  struct dir *dir = dir_get (fd);
+  if (dir == NULL)
+    return false;
+  return dir_readdir (dir, name);
 }
 
 static bool
@@ -409,8 +426,14 @@ sys_isdir (int fd)
 static int
 sys_inumber (int fd)
 {
-  struct dir *dir = dir_validate (fd);
-  return filesys_inumber (dir);
+  struct file *file = file_from_fd (fd);
+  if (kernel_has_access (file, sizeof *file) && is_file (file))
+    return file->inode->sector;
+
+  struct dir *dir = dir_from_fd (fd);
+  if (kernel_has_access (dir, sizeof *dir) && is_dir (dir))
+    return dir->inode->sector;
+  sys_exit (-1); // neither file nor dir
 }
 
 /*************************/

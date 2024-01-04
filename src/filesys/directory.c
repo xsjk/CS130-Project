@@ -15,14 +15,6 @@ is_dir (struct dir *dir)
   return dir->magic == DIR_MAGIC;
 }
 
-/* A single directory entry. */
-struct dir_entry
-{
-  block_sector_t inode_sector; /* Sector number of header. */
-  char name[NAME_MAX + 1];     /* Null terminated file name. */
-  bool in_use;                 /* In use or free? */
-};
-
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
@@ -61,6 +53,7 @@ subdir_create (struct dir *parent, const char *name)
   bool success = (parent != NULL && free_map_allocate (1, &inode_sector)
                   && dir_create (inode_sector, 0)
                   && dir_add (parent, name, inode_sector));
+  ASSERT (bitmap_all (free_map, inode_sector, 1));
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   return success;
@@ -87,8 +80,9 @@ dir_open (struct inode *inode)
   if (inode != NULL && dir != NULL)
     {
       dir->inode = inode;
-      dir->pos = 0;
+      dir->pos = 2 * sizeof (struct dir_entry);
       dir->magic = DIR_MAGIC;
+      dir->count = 0;
       dir_set_owner (dir);
       return dir;
     }
@@ -230,6 +224,9 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
+  if (dir->inode->removed == true)
+    return false;
+
   /* Check NAME for validity. */
   if (*name == '\0' || strlen (name) > NAME_MAX)
     return false;
@@ -255,6 +252,28 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
   success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+
+  // struct inode *inode;
+  // ASSERT (dir_lookup (dir, name, &inode));
+  // inode_close (inode);
+
+  if (success && inode_sector != ROOT_DIR_SECTOR && name[0] != '.')
+    {
+      struct inode *sub_inode = inode_open (inode_sector);
+      if (inode_is_dir (sub_inode))
+        {
+          // add parent dir to this sub dir
+          struct dir *sub_dir = dir_open (sub_inode);
+          ASSERT (dir_add (sub_dir, "..", inode_get_inumber (dir->inode)));
+          dir_close (sub_dir);
+        }
+      inode_close (sub_inode);
+    }
+  if (strcmp (name, ".") && strcmp (name, ".."))
+    {
+      dir->inode->data.count++;
+      block_write (fs_device, dir->inode->sector, &dir->inode->data);
+    }
 
 done:
   return success;
@@ -292,9 +311,21 @@ dir_remove (struct dir *dir, const char *name)
   inode_remove (inode);
   success = true;
 
+  if (strcmp (name, ".") && strcmp (name, ".."))
+    {
+      dir->inode->data.count--;
+      block_write (fs_device, inode->sector, &inode->data);
+    }
 done:
   inode_close (inode);
   return success;
+}
+
+static bool
+dir_is_empty (struct dir *dir)
+{
+  if (dir->inode->data.count == 0)
+    return true;
 }
 
 /**
@@ -307,10 +338,18 @@ subdir_remove (struct dir *parent, const char *name)
   struct dir *subdir = subdir_lookup (parent, name);
   if (subdir == NULL)
     return false;
+
+  // check if empty subdir
+  if (!dir_is_empty (subdir))
+    return false;
+
   else
     {
+      ASSERT (dir_remove (subdir, "."));
+      ASSERT (dir_remove (subdir, ".."));
+      bool success = dir_remove (parent, name);
       dir_close (subdir);
-      return dir_remove (parent, name);
+      return success;
     }
 }
 
@@ -350,7 +389,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 struct dir *
 dir_from_fd (int fd)
 {
-  return (struct dir *)(fd + 0xc0000000);
+  return (struct dir *)(fd + (char *)process_current () - 0x40000000);
 }
 
 void

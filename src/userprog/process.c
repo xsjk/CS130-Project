@@ -88,6 +88,7 @@ init_process (struct process *this, struct thread *thread)
 
   list_init (&this->child_list);
   list_init (&this->files);
+  list_init (&this->dirs);
   sema_init (&this->wait_sema, 0);
   sema_init (&this->elf_load_sema, 0);
   sema_init (&this->exec_sama, 0);
@@ -281,11 +282,25 @@ process_close_all_files (struct process *p)
     {
       struct file *f = list_entry (e, struct file, elem);
       ASSERT (is_file (f));
-      struct process *onwer = file_get_owner (f);
-      ASSERT (is_process (onwer));
-      ASSERT (onwer == p);
+      struct process *owner = file_get_owner (f);
+      ASSERT (is_process (owner));
+      ASSERT (owner == p);
       e = list_remove (e);
       file_close (f);
+    }
+  release_filesys ();
+}
+
+static void
+process_close_all_dirs (struct process *p)
+{
+  acquire_filesys ();
+  for (struct list_elem *e = list_begin (&p->dirs); e != list_end (&p->dirs);)
+    {
+      struct dir *d = list_entry (e, struct dir, dir_elem);
+      ASSERT (is_dir (d));
+      e = list_remove (e);
+      dir_close (d);
     }
   release_filesys ();
 }
@@ -305,6 +320,7 @@ process_exit (void)
 
   // close all open files
   process_close_all_files (p);
+  process_close_all_dirs (p);
   ASSERT (list_empty (&p->files));
 
   // prevent exiting before "process_exec" of parent process is done
