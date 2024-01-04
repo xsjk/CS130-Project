@@ -12,12 +12,12 @@
 
 struct cache_entry
 {
-  bool dirty;
-  bool valid;
-  bool accessed;
+  bool dirty : 1;
+  bool valid : 1;
+  bool accessed : 1;
   block_sector_t sector;
-  uint8_t data[BLOCK_SECTOR_SIZE];
-  struct lock cache_lock;
+  uint8_t *data;
+  struct lock lock;
   struct list_elem clock_list_elem; // for clock algorithm
   struct hash_elem hash_elem;       // for hash table
 };

@@ -1,4 +1,5 @@
-#include "cache.h"
+#include "filesys/cache.h"
+#include "devices/block.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/malloc.h"
@@ -12,6 +13,10 @@ static struct list_elem *clock_list_iterator;
 struct lock clock_list_lock;
 
 struct hash cache_table;
+
+uint8_t cache[CACHE_SIZE][BLOCK_SECTOR_SIZE];
+struct cache_entry cache_entries[CACHE_SIZE];
+int cache_count;
 
 static void
 clock_list_next (void)
@@ -67,7 +72,7 @@ clock_find_block_to_evict (void)
     {
       evict_entry = list_entry (clock_list_iterator, struct cache_entry,
                                 clock_list_elem);
-      if (!lock_try_acquire (&evict_entry->cache_lock))
+      if (lock_try_acquire (&evict_entry->lock))
         {
           if (evict_entry->accessed)
             {
@@ -75,10 +80,8 @@ clock_find_block_to_evict (void)
               clock_list_next ();
             }
           else
-            {
-              found = true;
-              lock_release (&evict_entry->cache_lock);
-            }
+            found = true;
+          lock_release (&evict_entry->lock);
         }
       else
         {
@@ -112,7 +115,19 @@ cache_table_less (const struct hash_elem *a, const struct hash_elem *b,
 void
 cache_table_init ()
 {
+  for (int i = 0; i < CACHE_SIZE; i++)
+    {
+      struct cache_entry *e = &cache_entries[i];
+      e->dirty = false;
+      e->valid = false;
+      e->accessed = false;
+      e->sector = 0;
+      e->data = &cache[i][0];
+      lock_init (&e->lock);
+    }
   hash_init (&cache_table, cache_table_hash, cache_table_less, NULL);
+  lock_init (&clock_list_lock);
+  list_init (&clock_list);
 }
 
 struct cache_entry *
@@ -125,41 +140,30 @@ cache_table_find (block_sector_t sector)
                       : NULL;
 }
 
-void
-cache_init ()
-{
-  lock_init (&clock_list_lock);
-  list_init (&clock_list);
-}
-
 static struct cache_entry *
 cache_get_block (block_sector_t sector)
 {
   struct cache_entry *entry;
   // if cache is full, evict a block
-  if (list_size (&clock_list) == CACHE_SIZE)
+  if (cache_count == CACHE_SIZE)
     {
       entry = clock_find_block_to_evict ();
-      lock_acquire (&entry->cache_lock);
+      lock_acquire (&entry->lock);
       if (entry->dirty)
         block_write (fs_device, entry->sector, entry->data);
       hash_delete (&cache_table, &entry->hash_elem);
       list_remove (&entry->clock_list_elem);
-      lock_release (&entry->cache_lock);
+      lock_release (&entry->lock);
     }
   else
-    {
-      entry = malloc (sizeof *entry);
-      lock_init (&entry->cache_lock);
-    }
+    entry = &cache_entries[cache_count++];
+
   block_read (fs_device, sector, entry->data);
   entry->valid = true;
   entry->dirty = false;
   entry->sector = sector;
   hash_insert (&cache_table, &entry->hash_elem);
-  lock_acquire (&clock_list_lock);
   clock_list_push_back (&entry->clock_list_elem);
-  lock_release (&clock_list_lock);
   return entry;
 }
 
@@ -173,10 +177,10 @@ cache_read (block_sector_t sector, void *buffer)
       // evict a cache block
       entry = cache_get_block (sector);
     }
-  lock_acquire (&entry->cache_lock);
+  lock_acquire (&entry->lock);
   entry->accessed = true;
   memcpy (buffer, entry->data, BLOCK_SECTOR_SIZE);
-  lock_release (&entry->cache_lock);
+  lock_release (&entry->lock);
 }
 
 void
@@ -189,11 +193,11 @@ cache_write (block_sector_t sector, const void *buffer)
       // evict a cache block
       entry = cache_get_block (sector);
     }
-  lock_acquire (&entry->cache_lock);
+  lock_acquire (&entry->lock);
   entry->accessed = true;
   entry->dirty = true;
   memcpy (entry->data, buffer, BLOCK_SECTOR_SIZE);
-  lock_release (&entry->cache_lock);
+  lock_release (&entry->lock);
 }
 
 void
@@ -204,12 +208,12 @@ cache_flush ()
     {
       struct cache_entry *entry
           = list_entry (e, struct cache_entry, clock_list_elem);
-      lock_acquire (&entry->cache_lock);
+      lock_acquire (&entry->lock);
       if (entry->dirty)
         {
           block_write (fs_device, entry->sector, entry->data);
         }
-      lock_release (&entry->cache_lock);
+      lock_release (&entry->lock);
       entry->valid = false;
       entry->dirty = false;
       entry->sector = -1;
