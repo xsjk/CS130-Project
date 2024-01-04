@@ -247,15 +247,28 @@ sys_open (const char *path)
   user_access_validate_string (path);
 
   acquire_filesys ();
+
+  // refers to a file or directory
   struct file *file = filesys_open (path);
-  if (file == NULL)
+  struct dir *dir = filesys_opendir (path);
+
+  if (file == NULL && dir == NULL)
     goto done;
 
   // set fd
-  fd = file->fd;
+  if (file != NULL)
+    {
+      fd = file->fd;
+      // add to thread's file list
+      list_push_back (&process_current ()->files, &file->elem);
+    }
 
-  // add to thread's file list
-  list_push_back (&process_current ()->files, &file->elem);
+  if (dir != NULL)
+    {
+      fd = dir->fd;
+      dir_reopen (dir);
+      thread_current ()->cwd = dir;
+    }
 
 done:
   release_filesys ();
@@ -342,8 +355,9 @@ sys_read (int fd, uint8_t __user *buffer, unsigned size)
 static int
 sys_write (int fd, const char __user *buffer, unsigned size)
 {
-  if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
-    sys_exit (-1);
+  // if (!is_user_vaddr (buffer) || !is_user_vaddr (buffer + size - 1))
+  //   sys_exit (-1);
+  user_access_validate (buffer, size);
 
   // stdout
   if (fd == STDOUT_FILENO)

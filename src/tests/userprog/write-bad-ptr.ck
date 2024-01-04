@@ -6,7 +6,7 @@ check_expected ([<<'EOF', <<'EOF']);
 (write-bad-ptr) begin
 (write-bad-ptr) open "sample.txt"
 (write-bad-ptr) end
-write-bad-ptr: exit(0)
+write-bad-ptr: exit(wbp0)
 EOF
 (write-bad-ptr) begin
 (write-bad-ptr) open "sample.txt"

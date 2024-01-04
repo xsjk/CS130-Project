@@ -177,6 +177,10 @@ thread_create (const char *name, int priority, thread_func *function,
   init_thread (t, name, priority);
   tid = t->tid;
 
+#ifdef FILESYS
+  t->cwd = thread_current ()->cwd;
+#endif
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -601,4 +605,12 @@ get_thread (tid_t tid)
         }
     }
   return NULL;
+}
+
+void
+dir_init ()
+{
+#ifdef FILESYS
+  initial_thread->cwd = dir_open_root ();
+#endif
 }

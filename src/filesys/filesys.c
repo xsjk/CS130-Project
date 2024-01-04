@@ -38,6 +38,92 @@ struct block *fs_device;
 
 static void do_format (void);
 
+/**
+ * @brief parse the path and get the file name and the directory
+ * @param path the path to parse
+ * @param file_name the file name without path info
+ * @param dir the directory will be moved to
+ * @return true if successful, false on failure.
+ */
+static bool
+filesys_parsing_path (const char *path, char *file_name, struct dir **dir,
+                      bool *is_file)
+{
+#ifdef FILESYS
+  // #if false
+  // default is file
+  *is_file = true;
+  struct thread *t = thread_current ();
+
+  // check if the path is valid
+  if (path == NULL || file_name == NULL || dir == NULL)
+    return false;
+
+  // empty path
+  if (strlen (path) == 0)
+    return false;
+
+  char *path_copy = malloc (strlen (path) + 1);
+  strlcpy (path_copy, path, strlen (path) + 1);
+
+  // check if the path is a directory, if so, remove the last '/'
+  if (path[strlen (path) - 1] == '/')
+    {
+      *is_file = false;
+      path_copy[strlen (path) - 1] = '\0';
+    }
+
+  // check if the path is absolute
+  if (path[0] == '/')
+    *dir = dir_open_root ();
+  else
+    *dir = dir_reopen (t->cwd);
+
+  if (*dir == NULL)
+    return false;
+
+  char *token, *save_ptr;
+  char *next_token = strtok_r (path_copy, "/", &save_ptr);
+
+  // check if the token is valid
+  if (strlen (next_token) > NAME_MAX)
+    {
+      dir_close (*dir);
+      free (path_copy);
+      return false;
+    }
+
+  while (next_token != NULL)
+    {
+      token = next_token;
+      next_token = strtok_r (NULL, "/", &save_ptr);
+      if (next_token == NULL)
+        break;
+
+      // check if the token is valid
+      if (strlen (token) > NAME_MAX)
+        {
+          dir_close (*dir);
+          free (path_copy);
+          return false;
+        }
+
+      // check if the token is a directory
+      struct dir *next_dir = subdir_lookup (*dir, token);
+      if (next_dir == NULL)
+        {
+          dir_close (*dir);
+          free (path_copy);
+          return false;
+        }
+    }
+
+  strlcpy (file_name, token, strlen (token) + 1);
+  free (path_copy);
+  return true;
+#endif
+}
+
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
 void
@@ -74,6 +160,28 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size)
 {
+#ifdef FILESYS
+  // #if false
+  struct dir *dir;
+  char file_name[NAME_MAX + 1];
+  bool is_file;
+  if (filesys_parsing_path (name, file_name, &dir, &is_file))
+    {
+      if (is_file == false)
+        {
+          dir_close (dir);
+          return false;
+        }
+      else
+        {
+          bool success = subfile_create (dir, file_name, initial_size);
+          dir_close (dir);
+          return success;
+        }
+    }
+  return false;
+
+#else
   block_sector_t inode_sector = 0;
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL && free_map_allocate (1, &inode_sector)
@@ -84,6 +192,7 @@ filesys_create (const char *name, off_t initial_size)
   dir_close (dir);
 
   return success;
+#endif
 }
 
 /* Opens the file with the given NAME.
@@ -94,6 +203,19 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
+#ifdef FILESYS
+
+  // refers to a file
+  struct dir *dir;
+  char file_name[NAME_MAX + 1];
+  bool is_file;
+  if (!filesys_parsing_path (name, file_name, &dir, &is_file))
+    return NULL;
+  struct file *file = subfile_lookup (dir, file_name);
+  dir_close (dir);
+
+  return file;
+#else
   struct dir *dir = dir_open_root ();
   struct inode *inode = NULL;
 
@@ -102,6 +224,7 @@ filesys_open (const char *name)
   dir_close (dir);
 
   return file_open (inode);
+#endif
 }
 
 /* Deletes the file named NAME.
@@ -111,11 +234,74 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name)
 {
+#ifdef FILESYS
+  struct dir *dir;
+  char file_name[NAME_MAX + 1];
+
+  // check the root directory
+  if (strcmp (name, "/") == 0)
+    return false;
+
+  bool is_file;
+  if (!filesys_parsing_path (name, file_name, &dir, &is_file))
+    return false;
+  bool success
+      = subdir_remove (dir, file_name) || subfile_remove (dir, file_name);
+  return success;
+
+#else
   struct dir *dir = dir_open_root ();
   bool success = dir != NULL && dir_remove (dir, name);
   dir_close (dir);
-
   return success;
+#endif
+}
+
+/**
+ * @brief Opens the directory with the given NAME.
+ * @param name the name of the directory
+ * @return the new directory if successful or a null pointer otherwise.
+ * Fails if no directory named NAME exists, or if an internal memory
+ * allocation fails.
+ */
+struct dir *
+filesys_opendir (const char *name)
+{
+#ifdef FILESYS
+  struct dir *dir;
+  char file_name[NAME_MAX + 1];
+  bool is_file;
+  if (!filesys_parsing_path (name, file_name, &dir, &is_file))
+    return NULL;
+
+  struct dir *sub_dir = subdir_lookup (dir, file_name);
+  dir_close (dir);
+  return sub_dir;
+
+#endif
+}
+
+/**
+ * @brief Changes the current working directory of the process to dir, which
+ * may be relative or absolute.
+ * @param name name of the directory
+ * @return true if successful, false on failure.
+ */
+bool
+filesys_chdir (const char *name)
+{
+  lock_acquire (&filesys_lock);
+  struct thread *t = thread_current ();
+  struct dir *dir = filesys_opendir (name);
+  if (dir == NULL)
+    {
+      lock_release (&filesys_lock);
+      return false;
+    }
+  dir_close (thread_current ()->cwd);
+  t->cwd = dir;
+  lock_release (&filesys_lock);
+  return true;
 }
 
 /**
@@ -129,17 +315,26 @@ filesys_remove (const char *name)
 bool
 filesys_mkdir (const char *name)
 {
-}
+#ifdef FILESYS
 
-/**
- * @brief Changes the current working directory of the process to dir, which
- * may be relative or absolute.
- * @param name name of the directory
- * @return true if successful, false on failure.
- */
-bool
-filesys_chdir (const char *name)
-{
+  if (name == NULL)
+    return false;
+
+  // empty name & root directory
+  if (strlen (name) == 0 || strcmp (name, "/") == 0)
+    return false;
+
+  struct dir *dir;
+  char dir_name[NAME_MAX + 1];
+  bool is_file;
+  bool success = false;
+  if (filesys_parsing_path (name, dir_name, &dir, &is_file))
+    success = subdir_create (dir, dir_name);
+
+  dir_close (dir);
+  return success;
+
+#endif
 }
 
 /**
@@ -160,8 +355,11 @@ filesys_chdir (const char *name)
  * increase this value from the default of 14.
  */
 bool
-filesys_readdir (struct dir *dir, char name[READDIR_MAX_LEN + 1])
+filesys_readdir (int fd, char *name)
 {
+#ifdef FILESYS
+  return dir_readdir (fd, name);
+#endif
 }
 
 /**
@@ -170,8 +368,10 @@ filesys_readdir (struct dir *dir, char name[READDIR_MAX_LEN + 1])
  * @return
  */
 int
-filesys_inumber (struct dir *dir)
+filesys_inumber (int fd)
 {
+#ifdef FILESYS
+#endif
 }
 
 /* Formats the file system. */

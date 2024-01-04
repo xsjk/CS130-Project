@@ -105,6 +105,11 @@ struct thread
       *process; /* The user process that is running on this thread */
 #endif
 
+#ifdef FILESYS
+  // TODO: initialize cwd in thread_create
+  struct dir *cwd; /* Current working directory */
+#endif
+
   struct thread *parent; /* The creator of this thread */
 
   /* Owned by thread.c. */
@@ -150,5 +155,9 @@ int thread_get_load_avg (void);
 bool is_thread (struct thread *);
 
 struct thread *get_thread (tid_t);
+
+#ifdef FILESYS
+void dir_init ();
+#endif
 
 #endif /* threads/thread.h */

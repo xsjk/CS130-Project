@@ -1,5 +1,6 @@
 #include "filesys/directory.h"
 #include "filesys/filesys.h"
+#include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 #include <list.h>
@@ -27,7 +28,54 @@ struct dir_entry
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
+#ifdef FILESYS
+  bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  if (success)
+    {
+      struct inode *inode = inode_open (sector);
+      inode_set_dir (inode, true);
+
+      struct dir *dir = dir_open (inode);
+      dir_add (dir, ".", sector);
+
+      // check if the directory is the root directory
+      if (inode_get_inumber (inode) == ROOT_DIR_SECTOR)
+        dir_add (dir, "..", sector);
+
+      dir_close (dir);
+    }
+  return success;
+#else
   return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+#endif
+}
+
+/**
+ * @brief create a subdir with name NAME in DIR
+ * @return true if successful, false otherwise
+ */
+bool
+subdir_create (struct dir *parent, const char *name)
+{
+  block_sector_t inode_sector = 0;
+  bool success = (parent != NULL && free_map_allocate (1, &inode_sector)
+                  && dir_create (inode_sector, 0)
+                  && dir_add (parent, name, inode_sector));
+  if (!success && inode_sector != 0)
+    free_map_release (inode_sector, 1);
+  return success;
+}
+
+bool
+subfile_create (struct dir *parent, const char *name, off_t initial_size)
+{
+  block_sector_t inode_sector = 0;
+  bool success = (parent != NULL && free_map_allocate (1, &inode_sector)
+                  && inode_create (inode_sector, initial_size)
+                  && dir_add (parent, name, inode_sector));
+  if (!success && inode_sector != 0)
+    free_map_release (inode_sector, 1);
+  return success;
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -41,6 +89,7 @@ dir_open (struct inode *inode)
       dir->inode = inode;
       dir->pos = 0;
       dir->magic = DIR_MAGIC;
+      dir_set_owner (dir);
       return dir;
     }
   else
@@ -133,6 +182,38 @@ dir_lookup (const struct dir *dir, const char *name, struct inode **inode)
   return *inode != NULL;
 }
 
+/**
+ * @brief lookup the subdir with name NAME in DIR
+ * @return the subdir if found, NULL otherwise
+ */
+struct dir *
+subdir_lookup (struct dir *parent, const char *name)
+{
+  struct inode *inode;
+  if (!dir_lookup (parent, name, &inode))
+    return NULL;
+  if (!inode_is_dir (inode))
+    {
+      inode_close (inode);
+      return NULL;
+    }
+  return dir_open (inode);
+}
+
+struct file *
+subfile_lookup (struct dir *parent, const char *name)
+{
+  struct inode *inode;
+  if (!dir_lookup (parent, name, &inode))
+    return NULL;
+  if (inode_is_dir (inode))
+    {
+      inode_close (inode);
+      return NULL;
+    }
+  return file_open (inode);
+}
+
 /* Adds a file named NAME to DIR, which must not already contain a
    file by that name.  The file's inode is in sector
    INODE_SECTOR.
@@ -216,6 +297,36 @@ done:
   return success;
 }
 
+/**
+ * @brief remove the subdir with name NAME in DIR
+ * @return true if successful, false otherwise
+ */
+bool
+subdir_remove (struct dir *parent, const char *name)
+{
+  struct dir *subdir = subdir_lookup (parent, name);
+  if (subdir == NULL)
+    return false;
+  else
+    {
+      dir_close (subdir);
+      return dir_remove (parent, name);
+    }
+}
+
+bool
+subfile_remove (struct dir *parent, const char *name)
+{
+  struct file *subfile = subfile_lookup (parent, name);
+  if (subfile == NULL)
+    return false;
+  else
+    {
+      file_close (subfile);
+      return dir_remove (parent, name);
+    }
+}
+
 /* Reads the next directory entry in DIR and stores the name in
    NAME.  Returns true if successful, false if the directory
    contains no more entries. */
@@ -240,4 +351,10 @@ struct dir *
 dir_from_fd (int fd)
 {
   return (struct dir *)(fd + 0xc0000000);
+}
+
+void
+dir_set_owner (struct dir *dir)
+{
+  dir->fd = (char *)dir - (char *)process_current () + 0x40000000;
 }

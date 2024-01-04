@@ -21,11 +21,15 @@ bool filesys_remove (const char *name);
 
 bool filesys_mkdir (const char *name);
 bool filesys_chdir (const char *name);
-bool filesys_readdir (struct dir *, char name[READDIR_MAX_LEN + 1]);
-int filesys_inumber (struct dir *);
+bool filesys_readdir (int fd, char *name);
+int filesys_inumber (int fd);
 
 void acquire_filesys (void);
 void release_filesys (void);
 bool has_acquired_filesys (void);
+
+#ifdef FILESYS
+struct dir *filesys_opendir (const char *name);
+#endif
 
 #endif /* filesys/filesys.h */
