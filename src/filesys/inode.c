@@ -11,19 +11,24 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+/* DIRECT_POINTERS, INDIRECT_BLOCKS, IINDIRECT_BLOCKS sum up to 126 */
+#define DIRECT_POINTERS 120
+#define INDIRECT_BLOCKS 5
+#define IINDIRECT_BLOCKS 1
+
 #define POINTERS_PER_BLOCK (BLOCK_SECTOR_SIZE / 4)
-#define INDIRECT_BLOCKS 1
 #define INDIRECT_POINTERS (INDIRECT_BLOCKS * POINTERS_PER_BLOCK)
-#define DIRECT_POINTERS (POINTERS_PER_BLOCK - 2 - INDIRECT_BLOCKS)
+#define IINDIRECT_POINTERS                                                    \
+  (IINDIRECT_BLOCKS * POINTERS_PER_BLOCK * POINTERS_PER_BLOCK)
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-// TODO: implement double indirect
 struct inode_disk
 {
-  off_t length;                             /* File size in bytes. */
-  block_sector_t direct[DIRECT_POINTERS];   /* direct pointers */
-  block_sector_t indirect[INDIRECT_BLOCKS]; /* indirect pointer */
+  off_t length;                               /* File size in bytes. */
+  block_sector_t direct[DIRECT_POINTERS];     /* direct pointers */
+  block_sector_t indirect[INDIRECT_BLOCKS];   /* indirect pointer */
+  block_sector_t iindirect[IINDIRECT_BLOCKS]; /* doubly indirect pointer */
   bool is_dir : 1;     /* where the inode represents a disk */
   unsigned magic : 31; /* Magic number. */
 };
@@ -63,7 +68,9 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos)
 {
   ASSERT (inode != NULL);
-  int i = pos / BLOCK_SECTOR_SIZE, j;
+  int i, j, k;
+
+  i = pos / BLOCK_SECTOR_SIZE;
 
   if (i < DIRECT_POINTERS)
     return inode->data.direct[i];
@@ -72,12 +79,28 @@ byte_to_sector (const struct inode *inode, off_t pos)
   j = i / POINTERS_PER_BLOCK;
   i = i % POINTERS_PER_BLOCK;
 
-  if (j >= INDIRECT_BLOCKS)
-    return INVALID_SECTOR;
+  if (j < INDIRECT_BLOCKS)
+    {
+      block_sector_t p[POINTERS_PER_BLOCK];
+      block_read (fs_device, inode->data.indirect[j], p);
+      return p[i];
+    }
 
-  block_sector_t p[POINTERS_PER_BLOCK];
-  block_read (fs_device, inode->data.indirect[j], p);
-  return p[i];
+  j -= INDIRECT_BLOCKS;
+  i -= INDIRECT_POINTERS;
+  k = j / POINTERS_PER_BLOCK;
+  j = j % POINTERS_PER_BLOCK;
+  i = i % POINTERS_PER_BLOCK;
+
+  if (k < IINDIRECT_BLOCKS)
+    {
+      block_sector_t p[POINTERS_PER_BLOCK];
+      block_read (fs_device, inode->data.iindirect[k], p);
+      block_read (fs_device, p[j], p);
+      return p[i];
+    }
+
+  PANIC ("out of max size of a inode");
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -107,19 +130,19 @@ block_calloc (block_sector_t *sectorp)
 }
 
 /**
- * @brief resize the sector array to `n`,
+ * @brief resize the direct sector array to `n`,
  * call `block_calloc` for unallocated (non-zero) slots
  * @param sectorp the array of sectors
  * @param n the target size
  * @return true if successfully allocated else false
  */
 static bool
-block_arr_resize (block_sector_t sectorp[], int n)
+block_arr_resize (block_sector_t direct_sectorp[], int n)
 {
   int i = 0;
   for (; i < n; i++)
-    if (sectorp[i] == 0)
-      if (!block_calloc (&sectorp[i]))
+    if (direct_sectorp[i] == 0)
+      if (!block_calloc (&direct_sectorp[i]))
         return false;
   if (i == n)
     return true;
@@ -135,35 +158,69 @@ block_arr_resize (block_sector_t sectorp[], int n)
 static bool
 inode_disk_resize (struct inode_disk *inode, int n)
 {
-  if (n > DIRECT_POINTERS + INDIRECT_POINTERS)
+  if (n > DIRECT_POINTERS + INDIRECT_POINTERS + IINDIRECT_POINTERS)
     return false;
 
   int direct_ptr_count = MIN (n, DIRECT_POINTERS);
-  int indirect_ptr_count = n - direct_ptr_count;
-  int indirect_block_count
-      = DIV_ROUND_UP (indirect_ptr_count, POINTERS_PER_BLOCK);
-
   if (!block_arr_resize (inode->direct, direct_ptr_count))
     return false;
+
+  n -= direct_ptr_count;
+
+  int indirect_ptr_count = MIN (n, INDIRECT_POINTERS);
+  int indirect_block_count
+      = DIV_ROUND_UP (indirect_ptr_count, POINTERS_PER_BLOCK);
 
   if (!block_arr_resize (inode->indirect, indirect_block_count))
     return false;
 
-  /* a helper memory space to modify blocks (write the content here and
-   * later call `block_write` to write real blocks ) */
-  block_sector_t p[POINTERS_PER_BLOCK];
-
   for (int j = 0; j < indirect_block_count; j++)
     {
+      block_sector_t p[POINTERS_PER_BLOCK];
       block_read (fs_device, inode->indirect[j], p);
-      int ptr_count = MIN ((indirect_ptr_count - j * POINTERS_PER_BLOCK),
-                           POINTERS_PER_BLOCK);
+      int ptr_count = MIN (n, POINTERS_PER_BLOCK);
       if (!block_arr_resize (p, ptr_count))
         return false;
       block_write (fs_device, inode->indirect[j], p);
+      n -= ptr_count;
     }
 
-  return true;
+  int iindirect_ptr_count = MIN (n, IINDIRECT_POINTERS);
+  int iindirect_block_count = DIV_ROUND_UP (
+      iindirect_ptr_count, POINTERS_PER_BLOCK * POINTERS_PER_BLOCK);
+
+  if (!block_arr_resize (inode->iindirect, iindirect_block_count))
+    return false;
+
+  for (int k = 0; k < iindirect_block_count; k++)
+    {
+      block_sector_t pp[POINTERS_PER_BLOCK];
+      block_read (fs_device, inode->iindirect[k], pp);
+
+      int indirect_block_count
+          = MIN (DIV_ROUND_UP (n, POINTERS_PER_BLOCK), POINTERS_PER_BLOCK);
+
+      if (!block_arr_resize (pp, indirect_block_count))
+        return false;
+
+      for (int j = 0; j < indirect_block_count; j++)
+        {
+          block_sector_t p[POINTERS_PER_BLOCK];
+          block_read (fs_device, pp[j], p);
+          int ptr_count = MIN (n, POINTERS_PER_BLOCK);
+          if (!block_arr_resize (p, ptr_count))
+            return false;
+          block_write (fs_device, pp[j], p);
+          n -= ptr_count;
+        }
+
+      block_write (fs_device, inode->iindirect[k], pp);
+    }
+
+  if (n == 0)
+    return true;
+  else
+    return false;
 }
 
 /**
@@ -283,34 +340,54 @@ inode_get_inumber (const struct inode *inode)
 /**
  * @brief Free the sector array `sectorp[n]`.
  * Call `free_map_release` for all allocated (non-zero) slots
- * @param sectorp the array of sectors
+ * @param direct the array of sectors
  * @param n the capacity of the array
  */
 static void
-block_arr_free (block_sector_t *sectorp, int n)
+block_arr_free_direct (block_sector_t *direct, int n)
 {
   for (int i = 0; i < n; i++)
-    if (sectorp[i] != 0)
-      free_map_release (sectorp[i], 1);
+    if (direct[i] != 0)
+      free_map_release (direct[i], 1);
 }
 
 /**
- * @brief Free the sector 2d array `sectorpp[m][POINTERS_PER_BLOCK]`.
- * Call `block_arr_free` for all allocated (non-zero) slots
- * @param pp the array of array of sectors
+ * @brief Free the sector 2d array `indirect[m][POINTERS_PER_BLOCK]`.
+ * Call `block_arr_free_direct` for all allocated (non-zero) slots
+ * @param indirect the array of array of sectors
  * @param m the size of outer array
  */
 static void
-block_arr_free_2d (block_sector_t *sectorpp, int m)
+block_arr_free_indirect (block_sector_t *indirect, int m)
 {
   block_sector_t sectorp[POINTERS_PER_BLOCK];
   for (int j = 0; j < m; j++)
-    if (sectorpp[j] != 0)
+    if (indirect[j] != 0)
       {
-        block_read (fs_device, sectorpp[j], sectorp);
-        block_arr_free (sectorp[j], POINTERS_PER_BLOCK);
+        block_read (fs_device, indirect[j], sectorp);
+        block_arr_free_direct (sectorp, POINTERS_PER_BLOCK);
       }
-  block_arr_free (sectorpp, m);
+  block_arr_free_direct (indirect, m);
+}
+
+/**
+ * @brief Free the sector 3d array
+ * `indirect[n][POINTERS_PER_BLOCK][POINTERS_PER_BLOCK]`.
+ * Call `block_arr_free_indirect` for all allocated (non-zero) slots
+ * @param indirect the array of array of array of sectors
+ * @param p the size of outer array
+ */
+static void
+block_arr_free_iindirect (block_sector_t *iindirect, int p)
+{
+  block_sector_t indirect[POINTERS_PER_BLOCK];
+  for (int k = 0; k < p; k++)
+    if (iindirect[k] != 0)
+      {
+        block_read (fs_device, iindirect[k], indirect);
+        block_arr_free_indirect (indirect, POINTERS_PER_BLOCK);
+      }
+  block_arr_free_direct (iindirect, p);
 }
 
 /**
@@ -320,8 +397,9 @@ block_arr_free_2d (block_sector_t *sectorpp, int m)
 void
 inode_disk_close (struct inode_disk *inode)
 {
-  block_arr_free (inode->direct, DIRECT_POINTERS);
-  block_arr_free_2d (inode->indirect, INDIRECT_BLOCKS);
+  block_arr_free_direct (inode->direct, DIRECT_POINTERS);
+  block_arr_free_indirect (inode->indirect, INDIRECT_BLOCKS);
+  block_arr_free_iindirect (inode->iindirect, IINDIRECT_BLOCKS);
 }
 
 /**
@@ -373,8 +451,8 @@ inode_remove (struct inode *inode)
  * @param buffer the output buffer
  * @param size the number of bytes want to read
  * @param offset the offset from the beginning of the inode
- * @return the number of bytes actually read, which may be less than `size` if
- * an error occurs or end of file is reached.
+ * @return the number of bytes actually read, which may be less than `size`
+ * if an error occurs or end of file is reached.
  */
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
@@ -390,7 +468,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     {
       /* Disk sector to read, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
-      ASSERT (sector_idx != NULL_SECTOR && sector_idx != INVALID_SECTOR);
 
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
@@ -435,14 +512,15 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 }
 
 /**
- * @brief Writes `size` bytes from `buffer` into `inode`, starting at `offset`.
+ * @brief Writes `size` bytes from `buffer` into `inode`,
+ * starting at `offset`.
  * @note Normally a write at end of file would extend the inode.
  * @param inode towards which to write
  * @param buffer the input buffer
  * @param size the number of bytes want to write
  * @param offset the offset from the beginning of the inode
- * @return the number of bytes actually written, which may be less than `size`
- if end of file is reached or an error occurs.
+ * @return the number of bytes actually written, which may be less than
+ `size` if end of file is reached or an error occurs.
  */
 off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
@@ -463,7 +541,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     {
       /* Sector to write, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
-      ASSERT (sector_idx != NULL_SECTOR && sector_idx != INVALID_SECTOR)
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
