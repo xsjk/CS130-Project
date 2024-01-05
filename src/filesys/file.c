@@ -1,6 +1,8 @@
 #include "filesys/file.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
+#include "vm/frame.h"
 #include <debug.h>
 
 /* Identifies an file. */
@@ -28,7 +30,10 @@ file_open (struct inode *inode)
 #ifdef USERPROG
       file->elem.prev = NULL;
       file->elem.next = NULL;
-      file_set_ownwer (file);
+      file_set_owner (file);
+#endif
+#ifdef VM
+      file->mmap_entry = NULL;
 #endif
       return file;
     }
@@ -45,6 +50,7 @@ file_open (struct inode *inode)
 struct file *
 file_reopen (struct file *file)
 {
+  // ASSERT (has_acquired_filesys ());
   return file_open (inode_reopen (file->inode));
 }
 
@@ -52,8 +58,13 @@ file_reopen (struct file *file)
 void
 file_close (struct file *file)
 {
+  // ASSERT (has_acquired_filesys ());
   if (file != NULL)
     {
+#ifdef VM
+      if (file->mmap_entry != NULL)
+        mmap_destroy (file->mmap_entry, fte_detach_from_file);
+#endif
       file_allow_write (file);
       inode_close (file->inode);
       free (file);
@@ -75,6 +86,7 @@ file_get_inode (struct file *file)
 off_t
 file_read (struct file *file, void *buffer, off_t size)
 {
+  // ASSERT (has_acquired_filesys ());
   off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_read;
   return bytes_read;
@@ -88,6 +100,7 @@ file_read (struct file *file, void *buffer, off_t size)
 off_t
 file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
 {
+  // ASSERT (has_acquired_filesys ());
   return inode_read_at (file->inode, buffer, size, file_ofs);
 }
 
@@ -101,6 +114,7 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
 off_t
 file_write (struct file *file, const void *buffer, off_t size)
 {
+  // ASSERT (has_acquired_filesys ());
   off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
   return bytes_written;
@@ -117,6 +131,7 @@ off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
                off_t file_ofs)
 {
+  // ASSERT (has_acquired_filesys ());
   return inode_write_at (file->inode, buffer, size, file_ofs);
 }
 
@@ -186,7 +201,7 @@ file_get_owner (struct file *file)
 }
 
 void
-file_set_ownwer (struct file *file)
+file_set_owner (struct file *file)
 {
   file->fd = (char *)file - (char *)process_current () + 0x40000000;
 }

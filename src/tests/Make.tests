@@ -98,7 +98,7 @@ endif
 DEBUGCMD += $(if $($(TEST)_ARGS),run '$(*F) $($(TEST)_ARGS)',run $(*F))
 
 
-%.debug:
+%.debug: kernel.bin loader.bin
 	@rm -f .loadsymbols
 	@for prog in $(PUTFILES); \
 		do objdump -h $$prog | \

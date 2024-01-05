@@ -8,9 +8,9 @@
 #include "userprog/process.h"
 #include <string.h>
 
-static struct list clock_list; // a cycle list for clock algorithm
-static struct list_elem *clock_list_iterator;
-struct lock clock_list_lock;
+static struct list cache_clock_list; // a cycle list for clock algorithm
+static struct list_elem *cache_clock_list_iterator;
+struct lock cache_clock_list_lock;
 
 struct hash cache_table;
 
@@ -19,12 +19,12 @@ struct cache_entry cache_entries[CACHE_SIZE];
 int cache_count;
 
 static void
-clock_list_next (void)
+cache_clock_list_next (void)
 {
-  clock_list_iterator
-      = (list_next (clock_list_iterator) == list_tail (&clock_list))
-            ? list_begin (&clock_list)
-            : list_next (clock_list_iterator);
+  cache_clock_list_iterator = (list_next (cache_clock_list_iterator)
+                               == list_tail (&cache_clock_list))
+                                  ? list_begin (&cache_clock_list)
+                                  : list_next (cache_clock_list_iterator);
 }
 
 /**
@@ -32,17 +32,17 @@ clock_list_next (void)
  * @note This function gaurentees thread safety
  */
 static void
-clock_list_push_back (struct list_elem *elem)
+cache_clock_list_push_back (struct list_elem *elem)
 {
-  lock_acquire (&clock_list_lock);
-  if (list_empty (&clock_list))
+  lock_acquire (&cache_clock_list_lock);
+  if (list_empty (&cache_clock_list))
     {
-      clock_list_iterator = elem;
-      list_push_back (&clock_list, elem);
+      cache_clock_list_iterator = elem;
+      list_push_back (&cache_clock_list, elem);
     }
   else
-    list_insert (clock_list_iterator, elem);
-  lock_release (&clock_list_lock);
+    list_insert (cache_clock_list_iterator, elem);
+  lock_release (&cache_clock_list_lock);
 }
 
 /**
@@ -51,33 +51,33 @@ clock_list_push_back (struct list_elem *elem)
  * @note This function gaurentees thread safety
  */
 static void
-clock_list_remove (struct list_elem *elem)
+cache_clock_list_remove (struct list_elem *elem)
 {
   ASSERT (elem != NULL);
-  ASSERT (!list_empty (&clock_list));
-  lock_acquire (&clock_list_lock);
-  if (clock_list_iterator == elem)
-    clock_list_next ();
+  ASSERT (!list_empty (&cache_clock_list));
+  lock_acquire (&cache_clock_list_lock);
+  if (cache_clock_list_iterator == elem)
+    cache_clock_list_next ();
   list_remove (elem);
-  lock_release (&clock_list_lock);
+  lock_release (&cache_clock_list_lock);
 }
 
 static struct cache_entry *
 clock_find_block_to_evict (void)
 {
-  lock_acquire (&clock_list_lock);
+  lock_acquire (&cache_clock_list_lock);
   struct cache_entry *evict_entry;
   bool found = false;
   while (!found)
     {
-      evict_entry = list_entry (clock_list_iterator, struct cache_entry,
-                                clock_list_elem);
+      evict_entry = list_entry (cache_clock_list_iterator, struct cache_entry,
+                                list_elem);
       if (lock_try_acquire (&evict_entry->lock))
         {
           if (evict_entry->accessed)
             {
               evict_entry->accessed = false;
-              clock_list_next ();
+              cache_clock_list_next ();
             }
           else
             found = true;
@@ -85,14 +85,15 @@ clock_find_block_to_evict (void)
         }
       else
         {
-          clock_list_next ();
+          cache_clock_list_next ();
         }
     }
 
-  clock_list_next ();
-  list_remove (&evict_entry->clock_list_elem);
+  cache_clock_list_next ();
+  list_remove (&evict_entry->list_elem);
+  hash_delete (&cache_table, &evict_entry->hash_elem);
 
-  lock_release (&clock_list_lock);
+  lock_release (&cache_clock_list_lock);
   return evict_entry;
 }
 
@@ -126,8 +127,8 @@ cache_table_init ()
       lock_init (&e->lock);
     }
   hash_init (&cache_table, cache_table_hash, cache_table_less, NULL);
-  lock_init (&clock_list_lock);
-  list_init (&clock_list);
+  lock_init (&cache_clock_list_lock);
+  list_init (&cache_clock_list);
 }
 
 struct cache_entry *
@@ -151,8 +152,6 @@ cache_get_block (block_sector_t sector)
       lock_acquire (&entry->lock);
       if (entry->dirty)
         block_write (fs_device, entry->sector, entry->data);
-      hash_delete (&cache_table, &entry->hash_elem);
-      list_remove (&entry->clock_list_elem);
       lock_release (&entry->lock);
     }
   else
@@ -163,7 +162,7 @@ cache_get_block (block_sector_t sector)
   entry->dirty = false;
   entry->sector = sector;
   hash_insert (&cache_table, &entry->hash_elem);
-  clock_list_push_back (&entry->clock_list_elem);
+  cache_clock_list_push_back (&entry->list_elem);
   return entry;
 }
 
@@ -203,11 +202,11 @@ cache_write (block_sector_t sector, const void *buffer)
 void
 cache_flush ()
 {
-  for (struct list_elem *e = list_begin (&clock_list);
-       e != list_end (&clock_list); e = list_next (e))
+  for (struct list_elem *e = list_begin (&cache_clock_list);
+       e != list_end (&cache_clock_list); e = list_next (e))
     {
       struct cache_entry *entry
-          = list_entry (e, struct cache_entry, clock_list_elem);
+          = list_entry (e, struct cache_entry, list_elem);
       lock_acquire (&entry->lock);
       if (entry->dirty)
         {

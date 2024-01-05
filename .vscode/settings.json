@@ -13,8 +13,5 @@
   "C_Cpp.formatting": "clangFormat",
   "C_Cpp.clang_format_fallbackStyle": "GNU",
   "editor.tabSize": 2,
-  "editor.formatOnSave": false,
-  "[c]": {
-    "editor.formatOnSave": true
-  }
+  "editor.formatOnSave": true
 }

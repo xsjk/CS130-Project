@@ -1,8 +1,11 @@
 #include "filesys/directory.h"
+#include "filesys/cache.h"
+#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "userprog/process.h"
 #include <list.h>
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +24,7 @@ bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
 #ifdef FILESYS
+  // ASSERT (has_acquired_filesys ());
   bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry));
   if (success)
     {
@@ -49,11 +53,12 @@ dir_create (block_sector_t sector, size_t entry_cnt)
 bool
 subdir_create (struct dir *parent, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   block_sector_t inode_sector = 0;
   bool success = (parent != NULL && free_map_allocate (1, &inode_sector)
                   && dir_create (inode_sector, 0)
                   && dir_add (parent, name, inode_sector));
-  ASSERT (bitmap_all (free_map, inode_sector, 1));
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   return success;
@@ -62,6 +67,8 @@ subdir_create (struct dir *parent, const char *name)
 bool
 subfile_create (struct dir *parent, const char *name, off_t initial_size)
 {
+  // ASSERT (has_acquired_filesys ());
+
   block_sector_t inode_sector = 0;
   bool success = (parent != NULL && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size)
@@ -76,6 +83,8 @@ subfile_create (struct dir *parent, const char *name, off_t initial_size)
 struct dir *
 dir_open (struct inode *inode)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir *dir = calloc (1, sizeof *dir);
   if (inode != NULL && dir != NULL)
     {
@@ -137,6 +146,8 @@ static bool
 lookup (const struct dir *dir, const char *name, struct dir_entry *ep,
         off_t *ofsp)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir_entry e;
   size_t ofs;
 
@@ -163,6 +174,8 @@ lookup (const struct dir *dir, const char *name, struct dir_entry *ep,
 bool
 dir_lookup (const struct dir *dir, const char *name, struct inode **inode)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir_entry e;
 
   ASSERT (dir != NULL);
@@ -183,6 +196,8 @@ dir_lookup (const struct dir *dir, const char *name, struct inode **inode)
 struct dir *
 subdir_lookup (struct dir *parent, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct inode *inode;
   if (!dir_lookup (parent, name, &inode))
     return NULL;
@@ -197,6 +212,8 @@ subdir_lookup (struct dir *parent, const char *name)
 struct file *
 subfile_lookup (struct dir *parent, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct inode *inode;
   if (!dir_lookup (parent, name, &inode))
     return NULL;
@@ -217,6 +234,8 @@ subfile_lookup (struct dir *parent, const char *name)
 bool
 dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir_entry e;
   off_t ofs;
   bool success = false;
@@ -285,6 +304,8 @@ done:
 bool
 dir_remove (struct dir *dir, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir_entry e;
   struct inode *inode = NULL;
   bool success = false;
@@ -335,6 +356,8 @@ dir_is_empty (struct dir *dir)
 bool
 subdir_remove (struct dir *parent, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir *subdir = subdir_lookup (parent, name);
   if (subdir == NULL)
     return false;
@@ -356,6 +379,8 @@ subdir_remove (struct dir *parent, const char *name)
 bool
 subfile_remove (struct dir *parent, const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct file *subfile = subfile_lookup (parent, name);
   if (subfile == NULL)
     return false;
@@ -372,6 +397,8 @@ subfile_remove (struct dir *parent, const char *name)
 bool
 dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
+  // ASSERT (has_acquired_filesys ());
+
   struct dir_entry e;
 
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e)

@@ -4,6 +4,7 @@
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include <debug.h>
 #include <stdio.h>
@@ -44,7 +45,6 @@ static void do_format (void);
  * @param path the path to parse
  * @param file_name the file name without path info
  * @param dir the directory will be moved to
- * @param is_file whether the `file_name` represents a file
  * @return true if successful, false on failure.
  */
 static bool
@@ -52,6 +52,7 @@ filesys_parsing_path (const char *path, char *file_name, struct dir **dir,
                       bool *is_file)
 {
 #ifdef FILESYS
+  // ASSERT (has_acquired_filesys ());
   // #if false
   // default is file
   *is_file = true;
@@ -162,8 +163,10 @@ filesys_init (bool format)
 void
 filesys_done (void)
 {
+  acquire_filesys ();
   cache_flush ();
   free_map_close ();
+  release_filesys ();
 }
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
@@ -173,6 +176,7 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size)
 {
+  // ASSERT (has_acquired_filesys ());
 #ifdef FILESYS
   struct dir *dir;
   char file_name[NAME_MAX + 1];
@@ -246,6 +250,7 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
 #ifdef FILESYS
   struct dir *dir;
   char file_name[NAME_MAX + 1];
@@ -279,6 +284,7 @@ filesys_remove (const char *name)
 struct dir *
 filesys_opendir (const char *name)
 {
+  // ASSERT (has_acquired_filesys ());
 #ifdef FILESYS
   struct dir *dir;
   char file_name[NAME_MAX + 1];
@@ -347,41 +353,6 @@ filesys_mkdir (const char *name)
   return success;
 
 #endif
-}
-
-/**
- * @brief Reads a directory entry from file descriptor fd, which must represent
- * a directory.
- * @param dir
- * @param name
- * @return true if successful, false on failure. If successful, stores the
- * null-terminated file name in name, which must have room for READDIR_MAX_LEN
- * + 1 bytes, and returns true. If no entries are left in the directory,
- * returns false.
- * @note . and .. should not be returned by readdir.
- * @note If the directory changes while it is open, then it is
- * acceptable for some entries not to be read at all or to be read multiple
- * times. Otherwise, each directory entry should be read once, in any order.
- * @note READDIR_MAX_LEN is defined in lib/user/syscall.h. If your file
- * system supports longer file names than the basic file system, you should
- * increase this value from the default of 14.
- */
-bool
-filesys_readdir (int fd, char *name)
-{
-#ifdef FILESYS
-  // return dir_readdir (dir, name);
-#endif
-}
-
-/**
- * @brief get inode number of fd
- * @param dir
- * @return
- */
-int
-filesys_inumber (int fd)
-{
 }
 
 /* Formats the file system. */

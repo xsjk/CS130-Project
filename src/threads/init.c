@@ -37,9 +37,19 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
+
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
+#endif
 
 /* Page directory with kernel mappings only. */
-uint32_t *init_page_dir;
+union entry_t *init_page_dir;
 
 #ifdef FILESYS
 /* -f: Format the file system? */
@@ -69,8 +79,6 @@ static void usage (void);
 static void locate_block_devices (void);
 static void locate_block_device (enum block_type, const char *name);
 #endif
-
-int main (void) NO_RETURN;
 
 /* Pintos main program. */
 int
@@ -128,6 +136,11 @@ main (void)
   dir_init ();
 #endif
 
+#ifdef VM
+  frame_init ();
+  swap_init ();
+#endif
+
   printf ("Boot complete.\n");
 
   /* Run actions specified on kernel command line. */
@@ -158,7 +171,7 @@ bss_init (void)
 static void
 paging_init (void)
 {
-  uint32_t *pd, *pt;
+  union entry_t *pd, *pt;
   size_t page;
   extern char _start, _end_kernel_text;
 
@@ -172,7 +185,7 @@ paging_init (void)
       size_t pte_idx = pt_no (vaddr);
       bool in_kernel_text = &_start <= vaddr && vaddr < &_end_kernel_text;
 
-      if (pd[pde_idx] == 0)
+      if (pd[pde_idx].val == 0)
         {
           pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
           pd[pde_idx] = pde_create (pt);
@@ -301,7 +314,7 @@ run_actions (char **argv)
   /* An action. */
   struct action
   {
-    char *name;                     /* Action name. */
+    const char *name;               /* Action name. */
     int argc;                       /* # of args, including action name. */
     void (*function) (char **argv); /* Function to execute action. */
   };

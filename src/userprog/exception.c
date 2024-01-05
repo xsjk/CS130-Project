@@ -1,12 +1,17 @@
 #include "userprog/exception.h"
+#include "filesys/filesys.h"
+#include "pagedir.h"
+#include "syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "userprog/gdt.h"
+#include "vm/page.h"
 #include <inttypes.h>
 #include <stdio.h>
 
 /* Number of page faults processed. */
-static long long page_fault_cnt;
+long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
@@ -122,9 +127,20 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f)
 {
+  bool is_try_load = f->eip >= try_load && f->eip <= try_load + 24;
+  bool is_try_store = f->eip >= try_store && f->eip <= try_store + 25;
+  if (is_try_load || is_try_store)
+    {
+      f->eip = f->eax;
+      f->eax = 0xffffffff;
+      return;
+    }
+
   bool not_present; /* True: not-present page, false: writing r/o page. */
   bool write;       /* True: access was write, false: access was read. */
   bool user;        /* True: access by user, false: access by kernel. */
+  bool reserved;    /* True: fault was caused by reserved bit violation. */
+  bool instr;       /* True: fault was caused by an instruction fetch. */
   void *fault_addr; /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
@@ -142,18 +158,50 @@ page_fault (struct intr_frame *f)
 
   /* Count page faults. */
   page_fault_cnt++;
+  // printf ("page_fault_cnt: %lld\n", page_fault_cnt);
 
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+  reserved = (f->error_code & PF_R) != 0;
+  instr = (f->error_code & PF_I) != 0;
 
-  if (!user)
+#ifdef VM
+  struct thread *t = thread_current ();
+  bool in_syscall = t->esp != NULL;
+  if (in_syscall)
+    ASSERT (!user);
+
+  if (not_present)
+    if (is_user_vaddr (fault_addr))
+      {
+        if (in_syscall || user)
+          if (user_stack_growth (fault_addr, user ? f->esp : t->esp))
+            // grow stack successfully
+            return;
+      }
+    else if (in_syscall)
+      {
+        printf ("not_present: %d\n", not_present);
+      }
+
+  if (in_syscall)
+    // if the error still exists and is in syscall,
+    // then it's a syscall execution error
     {
-      f->eip = f->eax;
-      f->eax = 0xffffffff;
+      if (has_acquired_filesys ()) // was acquired by syscall
+        release_filesys (); // release the filesys lock so that the process
+                            // can exit normally with
+                            // "process_close_all_files"
+      thread_exit ();
       return;
     }
+#else
+  if (has_acquired_filesys ())
+    release_filesys ();
+  thread_exit ();
+#endif
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

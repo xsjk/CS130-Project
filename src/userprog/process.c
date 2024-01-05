@@ -6,6 +6,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/pte.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/gdt.h"
@@ -18,6 +19,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
 
 #define PROCESS_MAGIC 0x636f7270
 
@@ -38,9 +44,12 @@ parse_args (const char *cmd)
     return NULL;
 
   int offset = strlcpy (page, cmd, 128) + 1;
-  struct args *args = page + offset; // struct args start from the end of cmd
+  struct args *args
+      = (struct args *)(page
+                        + offset); // struct args start from the end of cmd
   args->argc = 0;
-  args->argv = args + 1; // argv[0] start from the end of struct args
+  args->argv
+      = (char **)(args + 1); // argv[0] start from the end of struct args
 
   for (char *save_ptr, *token = strtok_r (page, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
@@ -54,11 +63,6 @@ static inline void
 free_args (struct args *args)
 {
   palloc_free_page (args->argv[0]);
-}
-
-void
-process_init (void)
-{
 }
 
 struct process *
@@ -75,24 +79,25 @@ process_pid (void)
 }
 
 void
-init_process (struct process *this, struct thread *thread)
+init_process (struct process *process, struct thread *thread)
 {
-  ASSERT (this != NULL);
+  ASSERT (process != NULL);
   ASSERT (thread != NULL);
-  this->exit_status = -1;
-  this->pid = -(int)this;
-  this->thread = thread;
-  this->parent = thread->parent ? thread->parent->process : NULL;
-  if (this->parent)
-    list_push_back (&this->parent->child_list, &this->childelem);
+  process->exit_status = -1;
+  process->pid = -(int)process;
+  process->thread = thread;
+  process->parent = thread->parent ? thread->parent->process : NULL;
+  if (process->parent)
+    list_push_back (&process->parent->child_list, &process->childelem);
 
-  list_init (&this->child_list);
-  list_init (&this->files);
-  list_init (&this->dirs);
-  sema_init (&this->wait_sema, 0);
-  sema_init (&this->elf_load_sema, 0);
-  sema_init (&this->exec_sama, 0);
-  this->magic = PROCESS_MAGIC;
+  list_init (&process->child_list);
+  list_init (&process->files);
+  list_init (&process->mmapped_files);
+  list_init (&process->dirs);
+  sema_init (&process->wait_sema, 0);
+  sema_init (&process->elf_load_sema, 0);
+  sema_init (&process->exec_sama, 0);
+  process->magic = PROCESS_MAGIC;
 }
 
 #include "threads/malloc.h"
@@ -135,17 +140,19 @@ process_execute (const char *cmd)
   // block until the child process load its elf
   sema_down (&p_child->elf_load_sema);
 
-  // allow the child process to exit
-  sema_up (&p_child->exec_sama);
-
   if (p_child->thread == NULL)
     // child's elf is not loaded due to some error e.g. file not found
     goto error;
+
+  // allow the child process to exit
+  sema_up (&p_child->exec_sama);
 
   return p_child->pid;
 
 error:
   intr_set_level (old_level);
+  // allow the child process to exit
+  sema_up (&p_child->exec_sama);
 
   free_args (args);
   return TID_ERROR;
@@ -172,12 +179,12 @@ intr_frame_init (struct intr_frame *infr, struct args *args)
 
       // copy data
       int *esp = infr->esp;
-      esp[0] = NULL;                                      // return addr
+      esp[0] = 0;                                         // return addr
       esp[1] = args->argc;                                // argc
       esp[2] = &esp[3];                                   // argv
       for (int i = 0; i < args->argc; i++)                // argv[]
         esp[3 + i] = args->argv[i] - args->argv[0] + cmd; //
-      esp[3 + args->argc] = NULL;                         //
+      esp[3 + args->argc] = 0;                            //
       memcpy (cmd, args->argv[0], cmd_length);            // argv[][]
     }
 
@@ -239,7 +246,7 @@ get_process (pid_t pid)
    been successfully called for the given TID, returns -1
    immediately, without waiting.
 
-   This function will be implemented in problem 2-2.  For now, it
+   process function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
 process_wait (pid_t pid)
@@ -269,40 +276,51 @@ process_wait (pid_t pid)
 bool
 is_process (struct process *p)
 {
-  return kernel_has_access (p, sizeof *p) && p->magic == PROCESS_MAGIC;
+  return kernel_has_access ((void *)p, sizeof *p) && p->magic == PROCESS_MAGIC;
 }
 
 void
-process_close_all_files (struct process *p)
+process_close_all_files (struct list *files)
 {
-
-  acquire_filesys ();
-  for (struct list_elem *e = list_begin (&p->files);
-       e != list_end (&p->files);)
+  for (struct list_elem *e = list_begin (files); e != list_end (files);)
     {
       struct file *f = list_entry (e, struct file, elem);
       ASSERT (is_file (f));
-      struct process *owner = file_get_owner (f);
-      ASSERT (is_process (owner));
-      ASSERT (owner == p);
+#ifdef VM
+      ASSERT (f->mmap_entry == NULL);
+#endif
+      struct process *onwer = file_get_owner (f);
+      ASSERT (is_process (onwer));
       e = list_remove (e);
       file_close (f);
     }
-  release_filesys ();
 }
 
+#ifdef VM
+
 static void
-process_close_all_dirs (struct process *p)
+page_destroy_action (struct hash_elem *e, void *aux)
 {
-  acquire_filesys ();
-  for (struct list_elem *e = list_begin (&p->dirs); e != list_end (&p->dirs);)
+  struct fte *fte = hash_entry (e, struct fte, cur_frame_table_elem);
+  struct thread *t = thread_current ();
+
+  ASSERT (&t->frame_table == aux);
+  /// Warning: deleting while iterating
+  fte_destroy (fte);
+}
+
+#endif
+
+static void
+process_close_all_dirs (struct list *dirs)
+{
+  for (struct list_elem *e = list_begin (dirs); e != list_end (dirs);)
     {
       struct dir *d = list_entry (e, struct dir, dir_elem);
       ASSERT (is_dir (d));
       e = list_remove (e);
       dir_close (d);
     }
-  release_filesys ();
 }
 
 /* Free the current process's resources. */
@@ -313,15 +331,10 @@ process_exit (void)
   ASSERT (is_thread (t));
 
   struct process *p = process_current ();
-  uint32_t *pd;
+  union entry_t *pd;
 
   ASSERT (is_process (p));
   ASSERT (p->thread == t);
-
-  // close all open files
-  process_close_all_files (p);
-  process_close_all_dirs (p);
-  ASSERT (list_empty (&p->files));
 
   // prevent exiting before "process_exec" of parent process is done
   sema_down (&p->exec_sama);
@@ -337,13 +350,34 @@ process_exit (void)
       process_wait (pid);
     }
 
+  acquire_filesys ();
+
+  // close all open files
+  process_close_all_files (&p->files);
+  process_close_all_dirs (&p->dirs);
+  ASSERT (list_empty (&p->files));
+
+#ifdef VM
+  for (struct list_elem *e = list_begin (&p->mmapped_files);
+       e != list_end (&p->mmapped_files);)
+    {
+      struct file *mmap_file = list_entry (e, struct file, elem);
+      ASSERT (is_file (mmap_file));
+      struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
+      e = list_remove (e);
+      // mmap_destroy iteratively calls fte_destroy
+      // fte_destroy may write through to the file
+      // so the mmap_file should close later
+      mmap_destroy (mmap_entry, fte_destroy);
+      file_close (mmap_file);
+    }
+
+  hash_destroy (&t->frame_table, page_destroy_action);
+#endif
+  release_filesys ();
+
+  p->thread->process = NULL;
   p->thread = NULL;
-
-  printf ("%s: exit(%d)\n", t->name, p->exit_status);
-
-  // tell the parent process that this process is finished
-  if (p->parent)
-    sema_up (&p->wait_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -361,11 +395,17 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  // tell the parent process that process process is finished
+  if (p->parent)
+    sema_up (&p->wait_sema);
+
+  printf ("%s: exit(%d)\n", t->name, p->exit_status);
 }
 
 /* Sets up the CPU for running user code in the current
    thread.
-   This function is called on every context switch. */
+   process function is called on every context switch. */
 void
 process_activate (void)
 {
@@ -393,7 +433,7 @@ typedef uint16_t Elf32_Half;
 #define PE32Hx PRIx16 /* Print Elf32_Half in hexadecimal. */
 
 /* Executable header.  See [ELF1] 1-4 to 1-8.
-   This appears at the very beginning of an ELF binary. */
+   process appears at the very beginning of an ELF binary. */
 struct Elf32_Ehdr
 {
   unsigned char e_ident[16];
@@ -498,7 +538,7 @@ load_entry (struct file *file, void (**eip) (void), void **esp)
         case PT_PHDR:
         case PT_STACK:
         default:
-          /* Ignore this segment. */
+          /* Ignore process segment. */
           break;
         case PT_DYNAMIC:
         case PT_INTERP:
@@ -571,7 +611,7 @@ done:
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+// static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -627,7 +667,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
 
         - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
 
-   The pages initialized by this function must be writable by the
+   The pages initialized by process function must be writable by the
    user process if WRITABLE is true, read-only otherwise.
 
    Return true if successful, false if a memory allocation error
@@ -643,18 +683,30 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0)
     {
-      /* Calculate how to fill this page.
+      /* Calculate how to fill process page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
+/* Get a page of memory. */
+#ifdef VM
+      struct fte *fte = fte_create (upage, writable);
+      uint8_t *kpage = fte->kpage;
+
+      /* Load process page */
+      if (file_read (file, kpage, page_read_bytes) != (int)page_read_bytes)
+        {
+          palloc_free_page (kpage);
+          return false;
+        }
+      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+#else
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
 
-      /* Load this page. */
+      /* Load process page. */
       if (file_read (file, kpage, page_read_bytes) != (int)page_read_bytes)
         {
           palloc_free_page (kpage);
@@ -668,6 +720,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false;
         }
+#endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -685,7 +738,15 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
+#ifdef VM
+  struct fte *fte = fte_create (((uint8_t *)PHYS_BASE) - PGSIZE, true);
+  success = fte != NULL;
+  if (success)
+    *esp = PHYS_BASE;
+
+#else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
@@ -694,6 +755,7 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+#endif
   return success;
 }
 
@@ -706,7 +768,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

@@ -8,6 +8,8 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 #include <filesys/directory.h>
 #include <filesys/file.h>
 #include <filesys/filesys.h>
@@ -228,6 +230,93 @@ sys_wait (int pid)
   return process_wait (pid);
 }
 
+#ifdef VM
+
+static mapid_t
+sys_mmap (int fd, void *addr)
+{
+
+  // check the fd and addr
+  if (fd == STDIN_FILENO || fd == STDOUT_FILENO || addr == NULL
+      || pg_ofs (addr) != 0)
+    return MAP_FAILED;
+  if (!is_user_vaddr (addr) || !is_user_vaddr (addr + 4095))
+    return MAP_FAILED;
+
+  // check the file
+  struct file *file = file_owner_validate (fd);
+  acquire_filesys ();
+  off_t size = file_length (file);
+  release_filesys ();
+  if (size == 0)
+    return MAP_FAILED;
+
+  // check the overlap
+  struct thread *cur = thread_current ();
+  int page_cnt = (size - 1) / PGSIZE + 1;
+  for (int i = 0; i < page_cnt; i++)
+    {
+      void *upage = addr + i * PGSIZE;
+      if (cur_frame_table_find (upage) != NULL)
+        return MAP_FAILED;
+    }
+
+  cur->mapid++;
+
+  // create mmap_entry
+  file->mmap_entry = malloc (sizeof (struct mmap_entry));
+  file->mmap_entry->mapid = cur->mapid;
+  file->mmap_entry->file = file;
+  list_init (&file->mmap_entry->fte_list);
+
+  off_t ofs = 0;
+  // create mmap
+  while (size > 0)
+    {
+      size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+      // create a fte
+      ASSERT (file->mmap_entry != NULL);
+      struct fte *fte = fte_attach_to_file (file, ofs, addr, true);
+      if (fte == NULL)
+        return MAP_FAILED;
+
+      size -= page_read_bytes;
+      addr += PGSIZE;
+      ofs += PGSIZE;
+    }
+
+  // move the file from normal file list to mmapped file list
+  list_remove (&file->elem);
+  list_push_back (&cur->process->mmapped_files, &file->elem);
+
+  return cur->mapid;
+}
+
+static void
+sys_munmap (int mapping)
+{
+  struct process *cur = process_current ();
+  for (struct list_elem *e = list_begin (&cur->mmapped_files);
+       e != list_end (&cur->mmapped_files);)
+    {
+      struct file *mmap_file = list_entry (e, struct file, elem);
+      ASSERT (is_file (mmap_file));
+      struct mmap_entry *mmap_entry = mmap_file->mmap_entry;
+      e = list_remove (e);
+      list_push_back (&cur->files, &mmap_file->elem);
+
+      if (mmap_entry->mapid == mapping)
+        {
+          // iterate the fte list and destroy
+          mmap_destroy (mmap_entry, fte_destroy);
+        }
+    }
+}
+
+#endif
+
 static bool
 sys_create (const char __user *file, unsigned initial_size)
 {
@@ -398,17 +487,24 @@ static bool
 sys_mkdir (const char __user *path)
 {
   user_access_validate_string (path);
-  return filesys_mkdir (path);
+  acquire_filesys ();
+  bool success = filesys_mkdir (path);
+  release_filesys ();
+  return success;
 }
 
 static bool
 sys_readdir (int fd, char __user *name)
 {
   user_access_validate (name, READDIR_MAX_LEN + 1);
+
   struct dir *dir = dir_get (fd);
   if (dir == NULL)
     return false;
-  return dir_readdir (dir, name);
+  acquire_filesys ();
+  bool success = dir_readdir (dir, name);
+  release_filesys ();
+  return success;
 }
 
 static bool
@@ -429,7 +525,6 @@ sys_inumber (int fd)
   struct file *file = file_from_fd (fd);
   if (kernel_has_access (file, sizeof *file) && is_file (file))
     return file->inode->sector;
-
   struct dir *dir = dir_from_fd (fd);
   if (kernel_has_access (dir, sizeof *dir) && is_dir (dir))
     return dir->inode->sector;

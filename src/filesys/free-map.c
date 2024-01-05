@@ -6,7 +6,7 @@
 #include <debug.h>
 
 static struct file *free_map_file; /* Free map file. */
-struct bitmap *free_map;           /* Free map, one bit per sector. */
+static struct bitmap *free_map;    /* Free map, one bit per sector. */
 
 /* Initializes the free map. */
 void

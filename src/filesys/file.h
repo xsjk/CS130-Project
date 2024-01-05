@@ -18,6 +18,9 @@ struct file
   off_t pos;           /* Current position. */
   bool deny_write : 1; /* Has file_deny_write() been called? */
   int magic : 31;
+#ifdef VM
+  struct mmap_entry *mmap_entry;
+#endif
 #ifdef USERPROG
   struct list_elem elem;
   int fd;
@@ -51,7 +54,7 @@ off_t file_length (struct file *);
 struct process *file_get_owner (struct file *file);
 
 /* set current thread as the owner of a file */
-void file_set_ownwer (struct file *file);
+void file_set_owner (struct file *file);
 
 /* get the file owned by current thread with fd */
 struct file *file_from_fd (int fd);

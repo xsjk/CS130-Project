@@ -18,8 +18,8 @@ struct cache_entry
   block_sector_t sector;
   uint8_t *data;
   struct lock lock;
-  struct list_elem clock_list_elem; // for clock algorithm
-  struct hash_elem hash_elem;       // for hash table
+  struct list_elem list_elem; // for clock algorithm
+  struct hash_elem hash_elem; // for hash table
 };
 
 void cache_init (void);
