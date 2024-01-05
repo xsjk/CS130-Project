@@ -610,7 +610,5 @@ get_thread (tid_t tid)
 void
 dir_init ()
 {
-#ifdef FILESYS
   initial_thread->cwd = dir_open_root ();
-#endif
 }

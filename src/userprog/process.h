@@ -16,6 +16,8 @@ struct process
   /// TODO: move any of these to thread struct if they can be freed with thread
   struct list files; /* Files opened by this thread*/
 
+  struct list dirs; /* dirs opened by this thread */
+
   struct list child_list; /* List of child processes. */
   /// TODO: use hash table to store child processes
 
