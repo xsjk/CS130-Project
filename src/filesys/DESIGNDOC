@@ -8,9 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Sijie Xu <xusj@shanghaitech.edu.cn>
+Yichun Bai <baiych@shanghaitech.edu.cn>
 
 ---- PRELIMINARIES ----
 
@@ -29,6 +28,17 @@ FirstName LastName <email@domain.example>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+struct inode_disk
+{
+  off_t length;        /* File size in bytes. */
+  bool is_dir : 1;     /* where the inode represents a disk */
+  unsigned count : 31; /* file or dir num*/
+  block_sector_t direct[DIRECT_POINTERS];     /* direct pointers */
+  block_sector_t indirect[INDIRECT_BLOCKS];   /* indirect pointer */
+  block_sector_t iindirect[IINDIRECT_BLOCKS]; /* doubly indirect pointer */
+  unsigned magic;                             /* Magic number. */
+};
 
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
@@ -69,10 +79,28 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct inode_disk
+{
+  bool is_dir : 1;     /* where the inode represents a disk */
+  unsigned count : 31; /* file or dir num*/
+};
+
+struct thread
+{
+  struct dir *cwd; /* Current working directory */
+}
+
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+We use filesys_parsing_path() to parse the user-specified path.
+After that, we get the file_name (file or dir) and its directory.
+If the path starts with '/', it is an absolute path; otherwise, it is a relative path.
+When facing an absolute path, we start from the root directory.
+When facing a relative path, we start from the current directory.
 
 ---- SYNCHRONIZATION ----
 
@@ -81,15 +109,22 @@ FirstName LastName <email@domain.example>
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+The remove and create operations are protected by the lock. functions like dir_lookup(), dir_readdir(), dir_add() and dir_remove() are synchronized by the lock in inode struct.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+Yes, only if the directory is empty, we can remove it. If the directory is not empty, we cannot remove it. 
+The process should change its current working directory in the future.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+We store the current directory(cwd) in the thread struct. It is convenient to access the current directory. Then it's easy to access the parent directory of the current directory.
 
                  BUFFER CACHE
                  ============
@@ -100,14 +135,34 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+#define CACHE_SIZE 64 /* no greater than 64 sectors */
+
+struct cache_entry
+{
+  bool dirty : 1; //
+  bool valid : 1;
+  bool accessed : 1;
+  block_sector_t sector;
+  uint8_t *data;
+  struct lock lock;
+  struct list_elem clock_list_elem; // for clock algorithm
+  struct hash_elem hash_elem;       // for hash table
+};
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+we use CLOCK ALGORITHM: We use "accessed" to record whether the block is accessed recently and "dirty" to record whether the block is modified recently. When we need to evict a block, we first check whether the block is accessed recently. If it is, we set "accessed" to false and move to the next block. If it is not, we check whether the block is modified recently. If it is, we write the block to the disk and set "dirty" to false. If it is not, we evict the block.
+
 >> C3: Describe your implementation of write-behind.
 
+When writing to a sector, we first check whether the sector is in the cache. If it is, we write to the cache. If it is not, we read the sector from the disk and write to the cache. It does not write back to disk util the block is evicted, by cache_flush().
+
 >> C4: Describe your implementation of read-ahead.
+
+???
 
 ---- SYNCHRONIZATION ----
 
@@ -115,13 +170,20 @@ FirstName LastName <email@domain.example>
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+Each cache_entry has a lock to protect it. When one process is actively reading or writing data in a buffer cache block, it will acquire the lock. Other processes will wait until the lock is released.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+Similarly, the evict operation also holds the lock in cache_entry. Other processes will wait until the lock is released.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+from buffer caching, When we read a file, we can read the data from the cache instead of the disk. It is much faster.
+from read-ahead and write-behind, we can decrease I/O operations and take advantage of the locality of reference.
 
                SURVEY QUESTIONS
                ================
