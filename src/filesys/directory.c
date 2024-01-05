@@ -272,7 +272,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   if (strcmp (name, ".") && strcmp (name, ".."))
     {
       dir->inode->data.count++;
-      block_write (fs_device, dir->inode->sector, &dir->inode->data);
+      cache_write (dir->inode->sector, &dir->inode->data);
     }
 
 done:
@@ -314,7 +314,7 @@ dir_remove (struct dir *dir, const char *name)
   if (strcmp (name, ".") && strcmp (name, ".."))
     {
       dir->inode->data.count--;
-      block_write (fs_device, inode->sector, &inode->data);
+      cache_write (inode->sector, &inode->data);
     }
 done:
   inode_close (inode);

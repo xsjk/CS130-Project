@@ -390,8 +390,7 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed)
         {
-          // TODO
-          block_write (fs_device, inode->sector, &inode->data);
+          cache_write (inode->sector, &inode->data);
           free_map_release (inode->sector, 1);
           inode_disk_close (&inode->data);
         }
@@ -607,7 +606,7 @@ void
 inode_set_dir (struct inode *inode, bool is_dir)
 {
   inode->data.is_dir = is_dir;
-  block_write (fs_device, inode->sector, &inode->data);
+  cache_write (inode->sector, &inode->data);
 }
 
 #endif

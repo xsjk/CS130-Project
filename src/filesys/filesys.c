@@ -44,6 +44,7 @@ static void do_format (void);
  * @param path the path to parse
  * @param file_name the file name without path info
  * @param dir the directory will be moved to
+ * @param is_file whether the `file_name` represents a file
  * @return true if successful, false on failure.
  */
 static bool
@@ -161,6 +162,7 @@ filesys_init (bool format)
 void
 filesys_done (void)
 {
+  cache_flush ();
   free_map_close ();
 }
 

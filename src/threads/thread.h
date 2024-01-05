@@ -106,7 +106,6 @@ struct thread
 #endif
 
 #ifdef FILESYS
-  // TODO: initialize cwd in thread_create
   struct dir *cwd; /* Current working directory */
 #endif
 
