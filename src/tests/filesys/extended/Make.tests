@@ -18,10 +18,21 @@ $(foreach prog,$(tests/filesys/extended_TESTS),		\
 	$(eval $(prog)_SRC += tests/main.c))
 $(foreach prog,$(tests/filesys/extended_TESTS),		\
 	$(eval $(prog)_PUTFILES += tests/filesys/extended/tar))
-# The version of GNU make 3.80 on vine barfs if this is split at
-# the last comma.
-$(foreach test,$(tests/filesys/extended_TESTS),$(eval $(test).output: FILESYSSOURCE = --disk=tmp.dsk))
-$(foreach test,$(tests/filesys/extended_TESTS),$(eval $(test).debug: FILESYSSOURCE = --disk=tmp.dsk))
+
+$(foreach test,$(tests/filesys/extended_TESTS),		\
+	$(eval $(test).output: FILESYSSOURCE = --disk=tmp.dsk))
+$(foreach test,$(tests/filesys/extended_TESTS),		\
+	$(eval $(test).debug: FILESYSSOURCE = --disk=tmp.dsk))
+
+$(foreach test,$(tests/filesys/extended_EXTRA_GRADES),		\
+	$(eval $(test).output: FILESYSSOURCE = --disk=tmp.dsk))
+$(foreach test,$(tests/filesys/extended_EXTRA_GRADES),		\
+	$(eval $(test).debug: FILESYSSOURCE = --disk=tmp.dsk))
+$(foreach test,$(tests/filesys/extended_EXTRA_GRADES),		\
+	$(eval $(test).output: TEST = $(test)))
+$(foreach test,$(tests/filesys/extended_EXTRA_GRADES),		\
+	$(eval $(test).debug: TEST = $(test)))
+	
 
 tests/filesys/extended/dir-mk-tree_SRC += tests/filesys/extended/mk-tree.c
 tests/filesys/extended/dir-rm-tree_SRC += tests/filesys/extended/mk-tree.c
@@ -46,21 +57,52 @@ GETCMD += run 'tar fs.tar /'
 GETCMD += < /dev/null
 GETCMD += 2> $(TEST)-persistence.errors $(if $(VERBOSE),|tee,>) $(TEST)-persistence.output
 
+DEFBUGTESTCMD = pintos -v -k -T $(TIMEOUT)
+DEFBUGTESTCMD += $(SIMULATOR)
+DEFBUGTESTCMD += $(PINTOSOPTS)
+ifeq ($(filter userprog, $(KERNEL_SUBDIRS)), userprog)
+DEFBUGTESTCMD += $(FILESYSSOURCE)
+DEFBUGTESTCMD += $(foreach file,$(PUTFILES),-p $(file) -a $(notdir $(file)))
+endif
+ifeq ($(filter vm, $(KERNEL_SUBDIRS)), vm)
+DEFBUGTESTCMD += --swap-size=4
+endif
+DEFBUGTESTCMD += -- -q
+DEFBUGTESTCMD += $(KERNELFLAGS)
+ifeq ($(filter userprog, $(KERNEL_SUBDIRS)), userprog)
+DEFBUGTESTCMD += -f
+endif
+DEFBUGTESTCMD += $(if $($(TEST)_ARGS),run '$(*F) $($(TEST)_ARGS)',run $(*F))
+
+DEBUGGETCMD = pintos -v -k --gdb
+DEBUGGETCMD += $(PINTOSOPTS)
+DEBUGGETCMD += $(SIMULATOR)
+DEBUGGETCMD += $(FILESYSSOURCE)
+DEBUGGETCMD += -g fs.tar -a $(TEST).tar
+ifeq ($(filter vm, $(KERNEL_SUBDIRS)), vm)
+DEBUGGETCMD += --swap-size=4
+endif
+DEBUGGETCMD += -- -q
+DEBUGGETCMD += $(KERNELFLAGS)
+DEBUGGETCMD += run 'tar fs.tar /'
+
 tests/filesys/extended/%.output: kernel.bin
 	rm -f tmp.dsk
 	pintos-mkdisk tmp.dsk --filesys-size=2
 	$(TESTCMD)
 	$(GETCMD)
 	rm -f tmp.dsk
+
 $(foreach raw_test,$(raw_tests),$(eval tests/filesys/extended/$(raw_test)-persistence.output: tests/filesys/extended/$(raw_test).output))
+$(foreach raw_test,$(raw_tests),$(eval tests/filesys/extended/$(raw_test)-persistence.debug: tests/filesys/extended/$(raw_test).output))
 $(foreach raw_test,$(raw_tests),$(eval tests/filesys/extended/$(raw_test)-persistence.result: tests/filesys/extended/$(raw_test).result))
 
-TARS = $(addsuffix .tar,$(tests/filesys/extended_TESTS))
 
 tests/filesys/extended/%.debug: kernel.bin
 	rm -f tmp.dsk
 	pintos-mkdisk tmp.dsk --filesys-size=2
 	@rm -f .loadsymbols
+	@touch .loadsymbols
 	@for prog in $(PUTFILES); \
 		do objdump -h $$prog | \
 		awk -v prog=$$prog \
@@ -70,6 +112,14 @@ tests/filesys/extended/%.debug: kernel.bin
 	done
 	$(DEBUGCMD)
 	$(GETCMD)
+	rm -f tmp.dsk
+
+tests/filesys/extended/%-persistence.debug: kernel.bin
+	rm -f tmp.dsk
+	pintos-mkdisk tmp.dsk --filesys-size=2
+	objdump -h tests/filesys/extended/tar | awk 'BEGIN { pwd = ENVIRON["PWD"] } /.text/ { print "add-symbol-file " pwd  "/tests/filesys/extended/tar"  " 0x"$$4 }' > .loadsymbols
+	$(DEFBUGTESTCMD)
+	$(DEBUGGETCMD)
 	rm -f tmp.dsk
 	
 clean::

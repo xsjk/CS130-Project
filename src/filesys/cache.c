@@ -216,6 +216,6 @@ cache_flush ()
       lock_release (&entry->lock);
       entry->valid = false;
       entry->dirty = false;
-      entry->sector = -1;
+      entry->sector = 0;
     }
 }
