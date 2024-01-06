@@ -195,7 +195,7 @@ bool is_thread (struct thread *);
 struct thread *get_thread (tid_t);
 
 #ifdef FILESYS
-void dir_init ();
+void dir_init (void);
 #endif
 
 #endif /* threads/thread.h */
