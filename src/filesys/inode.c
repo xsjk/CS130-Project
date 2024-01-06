@@ -87,7 +87,7 @@ static bool
 block_calloc (block_sector_t *sectorp)
 {
   static uint8_t zeros[BLOCK_SECTOR_SIZE];
-  if (free_map_allocate (1, sectorp) == false)
+  if (!free_map_allocate (1, sectorp))
     return false;
   cache_write (*sectorp, zeros);
   return true;
@@ -108,8 +108,7 @@ block_arr_resize (block_sector_t direct_sectorp[], int n)
     if (direct_sectorp[i] == 0)
       if (!block_calloc (&direct_sectorp[i]))
         return false;
-  if (i == n)
-    return true;
+  return i == n;
 }
 
 /**
@@ -181,10 +180,7 @@ inode_disk_resize (struct inode_disk *inode, int n)
       cache_write (inode->iindirect[k], pp);
     }
 
-  if (n == 0)
-    return true;
-  else
-    return false;
+  return n == 0;
 }
 
 /**
@@ -194,7 +190,7 @@ inode_disk_resize (struct inode_disk *inode, int n)
  * @param n the size to extend to
  * @return true if successfully resized
  */
-bool
+static bool
 inode_reserve (struct inode *inode, int n)
 {
   ASSERT (lock_held_by_current_thread (&inode->lock));
@@ -206,6 +202,7 @@ inode_reserve (struct inode *inode, int n)
 
   inode->data.length = n;
   cache_write (inode->sector, &inode->data);
+  return true;
 }
 
 /**
@@ -360,7 +357,7 @@ block_arr_free_iindirect (block_sector_t *iindirect, int p)
  * @brief close the inode disk
  * @param inode to close
  */
-void
+static void
 inode_disk_close (struct inode_disk *inode)
 {
   block_arr_free_direct (inode->direct, DIRECT_POINTERS);
@@ -502,7 +499,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     goto exit;
 
-  inode_reserve (inode, size + offset);
+  if (!inode_reserve (inode, size + offset))
+    return 0;
+  ASSERT (inode_length (inode) >= size + offset);
 
   while (size > 0)
     {

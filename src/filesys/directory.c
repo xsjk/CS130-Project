@@ -25,22 +25,22 @@ dir_create (block_sector_t sector, size_t entry_cnt)
 {
 #ifdef FILESYS
   // ASSERT (has_acquired_filesys ());
-  bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry));
-  if (success)
-    {
-      struct inode *inode = inode_open (sector);
-      inode_set_dir (inode, true);
+  if (!inode_create (sector, entry_cnt * sizeof (struct dir_entry)))
+    return false;
+  struct inode *inode = inode_open (sector);
+  inode_set_dir (inode, true);
 
-      struct dir *dir = dir_open (inode);
-      dir_add (dir, ".", sector);
+  struct dir *dir = dir_open (inode);
+  if (!dir_add (dir, ".", sector))
+    return false;
 
-      // check if the directory is the root directory
-      if (inode_get_inumber (inode) == ROOT_DIR_SECTOR)
-        dir_add (dir, "..", sector);
+  // check if the directory is the root directory
+  if (inode_get_inumber (inode) == ROOT_DIR_SECTOR)
+    if (!dir_add (dir, "..", sector))
+      return false;
 
-      dir_close (dir);
-    }
-  return success;
+  dir_close (dir);
+  return true;
 #else
   return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
 #endif
@@ -276,20 +276,20 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   // ASSERT (dir_lookup (dir, name, &inode));
   // inode_close (inode);
 
-  if (success && inode_sector != ROOT_DIR_SECTOR && name[0] != '.')
+  if (success && inode_sector != ROOT_DIR_SECTOR && strcmp (name, ".")
+      && strcmp (name, ".."))
     {
       struct inode *sub_inode = inode_open (inode_sector);
       if (inode_is_dir (sub_inode))
         {
           // add parent dir to this sub dir
           struct dir *sub_dir = dir_open (sub_inode);
+          if (sub_dir->inode->data.length != 20)
+            ASSERT (sub_dir->inode->data.length == 20);
           ASSERT (dir_add (sub_dir, "..", inode_get_inumber (dir->inode)));
           dir_close (sub_dir);
         }
       inode_close (sub_inode);
-    }
-  if (strcmp (name, ".") && strcmp (name, ".."))
-    {
       dir->inode->data.count++;
       cache_write (dir->inode->sector, &dir->inode->data);
     }
@@ -345,8 +345,7 @@ done:
 static bool
 dir_is_empty (struct dir *dir)
 {
-  if (dir->inode->data.count == 0)
-    return true;
+  return dir->inode->data.count == 0;
 }
 
 /**
