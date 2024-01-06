@@ -238,7 +238,6 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 
   struct dir_entry e;
   off_t ofs;
-  bool success = false;
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
@@ -252,7 +251,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
-    goto done;
+    return false;
 
   /* Set OFS to offset of free slot.
      If there are no free slots, then it will be set to the
@@ -270,32 +269,34 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   e.in_use = true;
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
-  success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+
+  if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e)
+    return false;
 
   // struct inode *inode;
   // ASSERT (dir_lookup (dir, name, &inode));
   // inode_close (inode);
 
-  if (success && inode_sector != ROOT_DIR_SECTOR && strcmp (name, ".")
+  if (inode_sector != ROOT_DIR_SECTOR && strcmp (name, ".")
       && strcmp (name, ".."))
     {
+      bool success = true;
       struct inode *sub_inode = inode_open (inode_sector);
       if (inode_is_dir (sub_inode))
         {
           // add parent dir to this sub dir
           struct dir *sub_dir = dir_open (sub_inode);
-          if (sub_dir->inode->data.length != 20)
-            ASSERT (sub_dir->inode->data.length == 20);
-          ASSERT (dir_add (sub_dir, "..", inode_get_inumber (dir->inode)));
+          success = dir_add (sub_dir, "..", inode_get_inumber (dir->inode));
           dir_close (sub_dir);
         }
       inode_close (sub_inode);
+      if (!success)
+        return false;
       dir->inode->data.count++;
       cache_write (dir->inode->sector, &dir->inode->data);
     }
 
-done:
-  return success;
+  return true;
 }
 
 /* Removes any entry for NAME in DIR.

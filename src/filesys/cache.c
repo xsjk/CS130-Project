@@ -172,14 +172,28 @@ cache_read (block_sector_t sector, void *buffer)
   struct cache_entry *entry = cache_table_find (sector);
   // if entry is not in cache
   if (entry == NULL)
-    {
-      // evict a cache block
-      entry = cache_get_block (sector);
-    }
+    // evict a cache block
+    entry = cache_get_block (sector);
+
   lock_acquire (&entry->lock);
   entry->accessed = true;
   memcpy (buffer, entry->data, BLOCK_SECTOR_SIZE);
   lock_release (&entry->lock);
+
+  for (int i = 1; i <= READ_AHEAD_COUNT; i++)
+    {
+      block_sector_t next_sector = sector + i;
+      if (next_sector >= block_size (fs_device))
+        break;
+
+      struct cache_entry *entry = cache_table_find (next_sector);
+      if (entry == NULL)
+        entry = cache_get_block (next_sector);
+
+      lock_acquire (&entry->lock);
+      entry->accessed = true;
+      lock_release (&entry->lock);
+    }
 }
 
 void

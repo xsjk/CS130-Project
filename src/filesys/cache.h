@@ -9,6 +9,7 @@
 #include "threads/thread.h"
 
 #define CACHE_SIZE 64 /* no greater than 64 sectors */
+#define READ_AHEAD_COUNT 5
 
 struct cache_entry
 {
